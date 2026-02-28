@@ -1,17 +1,17 @@
-# [PromptSkiller] MVP 验收清单（本地启动 + 数据库检查 + 核心流程）
+# [PromptSkiller] MVP 验收清单（当前版本）
 
-本文档用于你早上快速验收：MVP 是否“能跑通闭环”，以及数据库是否正常连通。
+本文档用于快速验证当前产品闭环是否正常（截至 2026-02-28）。
 
 ## 0. 先决条件
 
-- 已安装 Node.js + npm
-- 项目根目录存在 `.env.local`（已被 `.gitignore` 忽略，不要提交）
-  - `NEXT_PUBLIC_SUPABASE_URL`
-  - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-  - `SUPABASE_DB_URL`（仅给 `psql` 用，用于 `db:*` 脚本）
-- （可选）你有自己的 OpenAI key：用于体验“真实 AI 教练”
+- 已安装 Node.js + npm。
+- 已安装 `psql`（用于 `db:*` 脚本）。
+- 项目根目录存在 `.env.local`（不要提交到仓库）。
+- `.env.local` 至少包含 `NEXT_PUBLIC_SUPABASE_URL`。
+- `.env.local` 至少包含 `NEXT_PUBLIC_SUPABASE_ANON_KEY`。
+- `.env.local` 至少包含 `SUPABASE_DB_URL`。
 
-## 1. 一键检查（建议先跑）
+## 1. 基础健康检查
 
 在项目根目录执行：
 
@@ -23,81 +23,90 @@ npm test
 npm run build
 ```
 
-预期：
+预期结果：
 
-- `db:status` 能输出 `whoami/connected_at`，并列出 public 表；关键表行数能看到 drills=5、weekly_challenges=1
-- `lint/typecheck/test/build` 均通过
+- `db:status` 可连通数据库并输出表信息。
+- 关键行数至少应看到 `drills=5`、`weekly_challenges=1`（种子已执行时）。
+- `lint/typecheck/test/build` 全通过。
 
-备注：
-
-- 如果 `db:status` 里出现 `public.notes`：这是你 Supabase 项目里可能已存在的示例表，PromptSkiller MVP 不依赖它。
-
-## 2. 本地启动与手工验收
-
-启动开发服务器：
+## 2. 本地启动
 
 ```bash
 npm run dev
 ```
 
-打开 `http://localhost:3000` 后按以下顺序验收。
+浏览器打开 `http://localhost:3000`。
 
-### 2.1 今日训练（Mock 教练，匿名模式）
+## 3. 手工验收路径
+
+### 3.1 首页与导航
+
+- 首页能正常打开。
+- 顶部导航可进入：`今日训练`、`题库`、`周赛`、`配置`。
+
+### 3.2 题库页
+
+路径：`/drills`
+
+- 可看到题目列表与题号（`PS-xxx`）。
+- 搜索支持题号、标题、slug、tag。
+- 点击“开始训练”可进入对应题目。
+
+### 3.3 今日训练（核心）
 
 路径：`/drills/today`
 
-验证点：
+- 页面显示当天推荐 3 题（UTC 日期文案可见）。
+- 点击不同题卡可切换训练题。
+- 练习区左右拖拽、右侧上下拖拽可生效。
+- 刷新页面后分栏比例保持。
 
-- 能看到“今日训练题”内容
-- 输入一段 prompt，点击“提交给教练”
-- 能立即看到结构化反馈（分数 + 缺失项 + 改写建议等）
-- 刷新页面后，匿名模式历史记录仍存在（LocalStorage）
+提交验证（匿名模式）：
 
-### 2.2 配置真实 AI（可选）
+- 不配置 key 时，显示 Mock 模式。
+- 输入 prompt 并提交后，出现“生成中”打字反馈。
+- 结果包含总分、5 个维度分数、缺失项、歧义点、补充问题。
+- 参考答案默认不展开，点击按钮后才显示。
+- 历史记录可回看并可清空。
+
+### 3.4 配置真实模型（可选）
 
 路径：`/settings`
 
-验证点：
+- 默认状态应提示 Mock 模式。
+- 服务商下拉包含 `OpenAI`、`阿里云百炼（兼容模式）`、`自定义（OpenAI 兼容）`。
+- 填入 key 后点击“测试并保存”：成功时显示“连接正常”。
+- 填入 key 后点击“测试并保存”：失败时显示错误，不应保存。
+- 回到训练页再次提交，可看到真实模型模式标签。
 
-- 不填任何内容，默认 Mock
-- 填入 OpenAI key 后点击“测试并保存”
-  - 如果连通：显示连接正常
-  - 如果不连通：显示原因并不保存
-- 回到 `/drills/today` 再次提交，应显示“真实模型”模式
-
-安全提示：
-
-- Key 仅保存在浏览器 LocalStorage，并在每次调用 `/api/coach` 时临时随请求携带。
-- 如果你不希望浏览器保存 key，直接留空即可。
-
-### 2.3 登录与云端存档（Supabase Auth）
+### 3.5 登录与云端存档
 
 路径：`/auth`
 
-验证点：
+- 注册/登录可用（是否邮件验证由 Supabase 配置决定）。
+- 登录后在训练页提交一次。
+- 历史记录应写入云端（同账号刷新或跨设备可见）。
 
-- 能注册/登录（是否需要邮箱验证取决于 Supabase Auth 配置）
-- 登录后回到 `/drills/today` 提交一次训练
-- 再跑一次 `npm run db:status`，确认数据库连接仍正常
+### 3.6 周赛提交与投票
 
-进一步（可选）：
+路径：`/challenges` -> `/challenges/[slug]`
 
-- 用 Supabase Dashboard 或 `psql` 查询 `public.drill_attempts` 行数是否增加
+- 能看到当前周赛并进入详情页。
+- 登录后可提交作品（`artifact_url` + `prompt_log`）。
+- 提交后列表可见，且可打开 `/submissions/[id]` 分享页。
+- 点赞按钮可切换状态。
+- 对自己的作品点赞应被拦截。
 
-### 2.4 周赛：提交与投票
+### 3.7 个人页
 
-路径：`/challenges` -> 进入本周挑战详情页
+路径：`/profile`
 
-验证点：
+- 登录后能看到训练次数、平均分、连续天数。
+- “我的周赛提交”列表可显示提交记录与获赞。
 
-- 能看到本周挑战内容
-- 登录状态下可以提交（artifact_url + prompt_log）
-- 能在列表看到自己的 submission，并能打开分享页 `/submissions/<id>`
-- 投票按钮可用：不能给自己投票；投票后 `votes_count` 增加，再次点击可取消投票
+## 4. 边界与默认行为
 
-## 3. 你可能会关心的边界与默认策略
-
-- drills 内容来源：优先从 DB `public.drills` 读取；失败会 fallback 到本地常量，保证 UI 不空。
-- “今日题目”选择：按 UTC 日期 + drills 列表确定性选择（MVP 未使用 `drill_schedule`）。
-- 数据安全：所有写入表均开启 RLS，默认只允许 owner 写入/读取个人记录；公开内容（drills、weekly_challenges、submissions、votes）允许 public read。
-
+- 训练题读取失败时自动回退本地题库，页面不空白。
+- 未登录训练默认本地存储；登录后写入云端表 `drill_attempts`。
+- 所有关键写入表均受 RLS 保护。
+- `public.notes` 若出现在数据库中，属于 Supabase 历史示例表，不影响 PromptSkiller。

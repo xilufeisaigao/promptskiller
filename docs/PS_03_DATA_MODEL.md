@@ -1,114 +1,121 @@
 # [PromptSkiller] 数据模型（Supabase / Postgres）
 
-下面是一个建议的起始 schema。刻意保持最小化，后续可以迭代演进。
+本文档描述当前线上可用的数据库结构（对应 `db/migrations`），不是纯规划草案。
 
-## 表（Tables）
+## 迁移清单（已落地）
+
+- `001_init.sql`：`profiles`、`drills`、`drill_schedule`、`drill_attempts`
+- `002_weekly_challenges.sql`：`weekly_challenges`、`challenge_submissions`、`submission_votes` + 计数触发器
+- `003_drills_display_no.sql`：`drills.display_no`（全站题号）
+
+## 核心表与用途
 
 ### `profiles`
 
-对 Supabase `auth.users` 的补充，用于存公开的个人资料信息。
+用途：补充 `auth.users` 的公开资料字段。
 
-状态：已创建（见 `db/migrations/001_init.sql`）
-
-- `id` (uuid, pk, references auth.users.id)
-- `handle` (text, unique)
-- `display_name` (text)
-- `avatar_url` (text, nullable)
-- `created_at` (timestamptz)
+- `id`：`uuid`，主键，关联 `auth.users.id`
+- `handle`：`text`，唯一用户名
+- `display_name`：`text`，展示名
+- `avatar_url`：`text`，头像地址
+- `created_at`：`timestamptz`
 
 ### `drills`
 
-每日训练题（提示词练习场景）。
+用途：训练题内容主表。
 
-状态：已创建（见 `db/migrations/001_init.sql`）
-
-- `id` (text, pk) 说明：使用稳定 slug（例如 `drill-debug-minimal-repro`）
-- `display_no` (int, unique) 说明：全站递增题号（例如 `1,2,3...`，前端可展示为 `PS-001`）
-- `title` (text)
-- `body_md` (text) markdown 正文
-- `difficulty` (int) (1-5)
-- `tags` (text[]) optional
-- `published_at` (timestamptz, nullable)
-- `created_at` (timestamptz)
+- `id`：`text`，主键，稳定 slug（例如 `drill-debug-minimal-repro`）
+- `display_no`：`int`，唯一，全站递增题号（前端显示 `PS-001`）
+- `title`：`text`，题目标题
+- `body_md`：`text`，题面正文
+- `difficulty`：`smallint`，难度 1-5
+- `tags`：`text[]`，标签
+- `published_at`：`timestamptz`，发布时间
+- `created_at`：`timestamptz`
 
 ### `drill_schedule`
 
-把一个日期映射到一个训练题。
+用途：日期到题目的映射表（可用于手工排期）。
 
-状态：已创建（见 `db/migrations/001_init.sql`）
+- `date`：`date`，主键
+- `drill_id`：`text`，外键到 `drills.id`
 
-- `date` (date, pk)
-- `drill_id` (text, references drills.id)
-
-替代方案（更简单）：
-
-- 不建 schedule 表；用 `date % N` 等方式计算当天题目（但可控性较弱）。
+说明：当前“今日 3 题”主要按 UTC 日期 + 题库列表确定性选择，尚未强依赖该表。
 
 ### `drill_attempts`
 
-用户对某个训练题提交的提示词记录（包含教练反馈）。
+用途：记录用户对训练题的每次提示词提交及教练反馈。
 
-状态：已创建（见 `db/migrations/001_init.sql`）
+- `id`：`uuid`，主键
+- `user_id`：`uuid`，外键到 `auth.users.id`
+- `drill_id`：`text`，外键到 `drills.id`
+- `prompt_text`：`text`，用户提示词
+- `coach_mode`：`text`，`mock` 或 `openai`
+- `coach_feedback`：`jsonb`，结构化反馈
+- `score_total`：`int`，总分
+- `created_at`：`timestamptz`
 
-- `id` (uuid, pk)
-- `user_id` (uuid, references auth.users.id)
-- `drill_id` (text, references drills.id)
-- `prompt_text` (text)
-- `coach_mode` (text) 例如 `mock` / `openai`
-- `coach_feedback` (jsonb) 结构化反馈
-- `score_total` (int)
-- `created_at` (timestamptz)
+索引：
+
+- `(user_id, drill_id, created_at desc)`
+- `(user_id, created_at desc)`
 
 ### `weekly_challenges`
 
-状态：已创建（见 `db/migrations/002_weekly_challenges.sql`）
+用途：周赛题目主表。
 
-- `id` (uuid, pk)
-- `slug` (text, unique) 说明：可读 URL（例如 `week-2026-02-23`）
-- `title` (text)
-- `body_md` (text)
-- `start_at` (timestamptz)
-- `end_at` (timestamptz)
-- `created_at` (timestamptz)
+- `id`：`uuid`，主键
+- `slug`：`text`，唯一，可读 URL（例如 `week-2026-02-23`）
+- `title`：`text`
+- `body_md`：`text`
+- `start_at`：`timestamptz`
+- `end_at`：`timestamptz`
+- `created_at`：`timestamptz`
 
 ### `challenge_submissions`
 
-状态：已创建（见 `db/migrations/002_weekly_challenges.sql`）
+用途：周赛作品提交。
 
-- `id` (uuid, pk)
-- `challenge_id` (uuid, references weekly_challenges.id)
-- `user_id` (uuid, references auth.users.id)
-- `artifact_url` (text)（如需要也可拆成多个字段）
-- `artifact_type` (text) e.g. url | image | repo
-- `prompt_log_md` (text) markdown
-- `notes` (text, nullable)
-- `votes_count` (int) 说明：为列表展示做的计数缓存（由触发器维护）
-- `created_at` (timestamptz)
-- `updated_at` (timestamptz)
+- `id`：`uuid`，主键
+- `challenge_id`：`uuid`，外键到 `weekly_challenges.id`
+- `user_id`：`uuid`，外键到 `auth.users.id`
+- `artifact_url`：`text`，作品地址
+- `artifact_type`：`text`，如 `url` / `image` / `repo`
+- `prompt_log_md`：`text`，关键提示词记录
+- `notes`：`text`，可选说明
+- `votes_count`：`int`，缓存计数字段（由触发器维护）
+- `created_at`：`timestamptz`
+- `updated_at`：`timestamptz`
 
-唯一性（Uniqueness）：
+约束：
 
-- `unique(challenge_id, user_id)`：MVP 限制每人每题只提交一次。
+- `unique(challenge_id, user_id)`：每个挑战每个用户仅 1 份提交
 
 ### `submission_votes`
 
-状态：已创建（见 `db/migrations/002_weekly_challenges.sql`）
+用途：周赛点赞投票。
 
-- `id` (uuid, pk)
-- `submission_id` (uuid, references challenge_submissions.id)
-- `voter_id` (uuid, references auth.users.id)
-- `created_at` (timestamptz)
+- `id`：`uuid`，主键
+- `submission_id`：`uuid`，外键到 `challenge_submissions.id`
+- `voter_id`：`uuid`，外键到 `auth.users.id`
+- `created_at`：`timestamptz`
 
-唯一性（Uniqueness）：
+约束：
 
-- `unique(submission_id, voter_id)`：防止重复投票。
+- `unique(submission_id, voter_id)`：防止重复投票
 
-## RLS 说明（初稿）
+## RLS 与权限摘要
 
-- 公共可读（Public read）：
-  - `drills`, `weekly_challenges`, `challenge_submissions`（可选：是否公开 submissions 取决于产品规则）
-- 私有（Private）：
-  - `drill_attempts`（仅 owner 可读写）
-- 投票（Voting）：
-  - 仅登录用户可 insert
-  - 通过 unique constraint 防止重复投票
+- Public read：`drills`、`drill_schedule`、`weekly_challenges`、`challenge_submissions`、`submission_votes`
+- Private owner：`drill_attempts`（仅 owner 读写）
+- 周赛提交：仅 owner 可写，且受挑战时间窗口约束
+- 投票：仅登录用户可写，且禁止自投
+
+## 最近一次数据库状态（2026-02-28）
+
+- `drills = 5`
+- `weekly_challenges = 1`
+- `challenge_submissions = 0`
+- `submission_votes = 0`
+
+可复查命令：`npm run db:status`

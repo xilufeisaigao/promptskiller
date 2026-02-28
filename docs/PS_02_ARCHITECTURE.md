@@ -2,65 +2,70 @@
 
 ## 技术栈
 
-- Next.js（App Router）
-- Tailwind CSS
-- shadcn/ui（基于 Radix UI primitives）
-- Supabase
-  - Auth
-  - Postgres 数据库
-  - Storage（可选：存提交截图等）
+- Next.js 16（App Router）
+- React 19
+- Tailwind CSS 4
+- Supabase Auth（登录/注册与会话）
+- Supabase Postgres（业务数据）
+- Supabase RLS（行级权限控制）
+- Zod（API 入参校验）
+- Vitest（单元测试）
 
 ## 运行时组件
 
-- Next.js Web 应用（UI）
-- Supabase Client
-  - 浏览器端 client：在 RLS 约束下读写
-  - 服务端使用（可选）：执行需要特权的操作
-- AI 教练服务（服务端）
-  - Next.js Route Handler：调用所选 LLM provider
+- Next.js 页面层（SSR + Client Components 混合）
+- Supabase 浏览器端 Client（用户态读写）
+- Next.js Route Handlers（服务端 API）
+- AI 教练适配层（Mock + OpenAI 兼容服务）
 
-## 建议路由（MVP）
+## 当前路由
 
-- `/` 落地页
-- `/auth` 登录/注册
-- `/drills/today` 今日训练
-- `/drills/[id]` 训练题详情
-- `/challenges` 挑战列表（本周 + 历史）
-- `/challenges/[id]` 挑战详情
-- `/submissions/[id]` 作品公开分享页
-- `/profile` 个人主页
+- `/`：首页（产品说明 + 快捷入口）
+- `/auth`：登录/注册
+- `/settings`：模型配置与 key 连通性测试
+- `/drills`：题库列表 + 搜索
+- `/drills/today`：每日推荐 3 题
+- `/drills/[id]`：训练题固定链接
+- `/challenges`：周赛列表
+- `/challenges/[slug]`：周赛详情、提交、投票
+- `/submissions/[id]`：作品公开页
+- `/profile`：个人统计页
+- `/api/coach`：训练提交后获取教练反馈
+- `/api/openai/test-key`：测试 API Key 联通性
 
-## AI 教练接入
+## 训练链路（Drill Flow）
 
-约束：
+1. 页面读取题目：先从 `public.drills` 读取并按 `display_no` 排序；数据库不可用时回退到本地题库。
+2. 用户提交提示词：前端调用 `POST /api/coach`，请求体包含 `drillId`、`promptText` 与可选 provider 参数。
+3. 教练反馈生成：未配置 key 走 `mockCoachFeedback`；已配置 key 走 OpenAI 兼容调用（支持 OpenAI/百炼/custom）。
+4. 持久化：未登录写 LocalStorage，已登录写 `public.drill_attempts`。
+5. 展示：反馈区展示结构化评分建议，历史区支持版本切换与回看。
 
-- 不要在浏览器暴露平台的 LLM API Key。
-- 需要按 `user_id` / IP 做限流，控制成本。
-- 只存必要信息：
-  - prompt 文本
-  - 教练反馈
-  - 分数/结构化维度
+## UI 架构要点
 
-推荐方案：
+- 训练页采用双层可调分栏。
+- 主分栏：左（题面+输入）/右（反馈+历史）。
+- 次分栏：右侧反馈区与历史区上下可拖拽。
+- 分栏比例持久化到 LocalStorage，提升复访体验。
+- 反馈组件对参考答案使用显式按钮展开，避免过早“抄答案”。
 
-- `POST /api/coach`
-  - 输入：`drill_id`, `prompt_text`, `attempt_index`
-  - 输出：结构化反馈 JSON
+## AI Provider 适配策略
 
-## 安全与权限（Supabase RLS）
+- 标准输入：统一由前端传 `provider/baseUrl/model/apiKey`。
+- Provider 预设：`openai`。
+- Provider 预设：`bailian`（`dashscope.aliyuncs.com/compatible-mode/v1`）。
+- Provider 预设：`custom`（任意 OpenAI 兼容网关）。
+- 联通性校验先于保存，失败不落库/不持久化。
 
-最低要求：
+## 数据与权限设计（RLS）
 
-- 用户可公开读取训练题与挑战题（public read）
-- 用户可创建/读取自己的训练尝试（attempts）
-- 用户可创建挑战提交（submission），并在截止前可选地编辑
-- 投票规则：
-  - 每人每个 submission 只能投票一次（唯一约束 + RLS 规则配合）
+- 公共可读：`drills`、`weekly_challenges`、`challenge_submissions`、`submission_votes`
+- 用户私有：`drill_attempts`（仅 owner 可读写）
+- 周赛提交：仅登录用户可写，且须满足挑战时间窗口
+- 投票：仅登录用户可写，且通过约束限制重复投票和自投
 
-## 内容运营（MVP）
+## 内容发布机制（当前）
 
-MVP 先避免做后台管理 UI：
-
-- 在 Supabase 里直接用 SQL 插入/seed drills & challenges
-- 后续如果需要，可加一个最小化的内部 admin route（用 role / allow list 保护）
-
+- 通过 SQL migration + seed 管理内容。
+- 训练题与周赛题由 `db/seed/*.sql` 维护。
+- 尚未实现后台管理 UI（后续迭代项）。

@@ -53,7 +53,7 @@ export function AppShell(props: { children: React.ReactNode }) {
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 pt-6">
           <p>© {new Date().getFullYear()} PromptSkiller</p>
           <p className="text-[11px]">
-            默认 Mock 教练。配置 API Key 后可切换为真实模型（可选）。
+            支持本地练习与在线模型接入。
           </p>
         </div>
       </footer>

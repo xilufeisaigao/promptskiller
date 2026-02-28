@@ -59,7 +59,6 @@ export function DrillPracticeClient(props: { drill: Drill }) {
   const verticalDraggingRef = useRef(false);
 
   const settings = useMemo(() => loadLocalSettings(), []);
-  const hasOpenAIKey = Boolean((settings.openaiApiKey || "").trim());
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -521,13 +520,6 @@ export function DrillPracticeClient(props: { drill: Drill }) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-medium">你的提示词</p>
             <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-              <span>
-                教练模式：
-                <span className="ml-1 font-medium text-foreground">
-                  {hasOpenAIKey ? "真实模型" : "Mock"}
-                </span>
-              </span>
-              <span className="text-muted-foreground/60">·</span>
               <span>
                 记录：
                 <span className="ml-1 font-medium text-foreground">

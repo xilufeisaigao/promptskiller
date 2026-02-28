@@ -1,21 +1,29 @@
 # [PromptSkiller] 文档目录
 
-这里存放 PromptSkiller 的产品与工程相关文档。
+这里存放 PromptSkiller 的产品与工程文档。
 
-为方便在文件夹内自然排序，文件名统一使用 `PS_XX_` 的编号前缀。
+为方便文件夹内自然排序，文件名统一使用 `PS_XX_` 编号前缀。
 
 ## 建议阅读顺序
 
-1. [PS_01_PRD.md](./PS_01_PRD.md)：产品需求（目标、MVP 范围、用户流程、待定问题）
-2. [PS_02_ARCHITECTURE.md](./PS_02_ARCHITECTURE.md)：Web MVP 架构概览
-3. [PS_03_DATA_MODEL.md](./PS_03_DATA_MODEL.md)：Supabase（Postgres）数据模型草案
-4. [PS_04_COMPETITIONS.md](./PS_04_COMPETITIONS.md)：周赛机制（规则、投票、公平性）
-5. [PS_05_ROADMAP.md](./PS_05_ROADMAP.md)：里程碑与分阶段交付计划
-6. [PS_06_EXECUTION_PLAN.md](./PS_06_EXECUTION_PLAN.md)：代码执行方案（实现步骤、测试方案、工具清单）
-7. [PS_07_MVP_CHECKLIST.md](./PS_07_MVP_CHECKLIST.md)：MVP 验收清单（本地启动 + 数据库检查 + 核心流程）
+1. [PS_01_PRD.md](./PS_01_PRD.md)：产品目标、MVP 范围、当前冻结需求
+2. [PS_08_PROJECT_SNAPSHOT.md](./PS_08_PROJECT_SNAPSHOT.md)：项目快照（截至 2026-02-28 的真实实现状态）
+3. [PS_02_ARCHITECTURE.md](./PS_02_ARCHITECTURE.md)：Web 架构与关键数据流
+4. [PS_03_DATA_MODEL.md](./PS_03_DATA_MODEL.md)：Supabase/Postgres 数据模型与迁移
+5. [PS_04_COMPETITIONS.md](./PS_04_COMPETITIONS.md)：周赛机制与当前规则
+6. [PS_05_ROADMAP.md](./PS_05_ROADMAP.md)：里程碑状态与后续迭代计划
+7. [PS_07_MVP_CHECKLIST.md](./PS_07_MVP_CHECKLIST.md)：MVP 验收清单（启动、联通性、核心流程）
+8. [PS_09_NEXT_DESIGN_FLOW.md](./PS_09_NEXT_DESIGN_FLOW.md)：Post-MVP 设计流程（标签/模块/复杂代码题）
+
+## 当前文档基线
+
+- 本次已清理过时文档 `PS_06_EXECUTION_PLAN.md`（该文件属于开发前规划，已不再反映现状）。
+- 文档内容统一同步到当前实现：题库页面、今日 3 题推荐、可调分栏练习区、周赛提交流程、投票与个人统计。
+- 数据库快照来自 `npm run db:status`（2026-02-28）：`drills=5`、`weekly_challenges=1`。
+- 新增 `PS_09_NEXT_DESIGN_FLOW.md`，用于承接 MVP 后的产品设计与信息架构升级。
 
 ## 写作原则
 
-- 文档务实：优先描述未来 1-2 次迭代内会交付的内容。
-- 需求不确定时，明确写在「待定问题 / Open Questions」里，而不是用模糊措辞带过。
-- 任何新增的数据表/字段，都要同步更新到 [PS_03_DATA_MODEL.md](./PS_03_DATA_MODEL.md)。
+- 文档优先描述“已实现状态 + 下一步可执行计划”，避免过期规划。
+- 需求未定时，显式标记为“待决策”，并写清影响范围。
+- 任何新增数据表或字段，必须同步更新 [PS_03_DATA_MODEL.md](./PS_03_DATA_MODEL.md)。

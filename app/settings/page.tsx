@@ -50,7 +50,7 @@ export default function SettingsPage() {
   async function onTestAndSave() {
     const key = apiKey.trim();
     if (!key) {
-      // Empty key = default to mock mode; clear saved settings.
+      // Empty key keeps local practice mode; clear saved settings.
       clearLocalSettings();
       setSaved({});
       setStatus({ kind: "idle" });
@@ -112,7 +112,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">配置</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          不填写任何内容时，默认使用 Mock 教练。填写并测试通过后，将使用真实模型。
+          填写并测试通过后，可启用在线模型反馈；未填写时仍可继续本地训练。
         </p>
       </div>
 
@@ -149,9 +149,7 @@ export default function SettingsPage() {
                 已保存（本地）：{savedKeyMasked}
               </p>
             ) : (
-              <p className="text-xs text-muted-foreground">
-                未保存 Key（当前将使用 Mock 教练）。
-              </p>
+              <p className="text-xs text-muted-foreground">未保存 Key。</p>
             )}
           </div>
 
@@ -208,7 +206,7 @@ export default function SettingsPage() {
             ) : null}
             {status.kind === "idle" ? (
               <p className="text-sm text-muted-foreground">
-                当前为 Mock 教练模式。
+                当前为本地训练模式。
               </p>
             ) : null}
           </div>
@@ -218,7 +216,7 @@ export default function SettingsPage() {
             <p className="mt-1">
               这里的 Key 只保存在你的浏览器 LocalStorage 中，用于向本应用的后端
               API 发起请求时临时携带（方便你自己测试）。如果你不希望在浏览器存 Key，
-              直接留空即可使用 Mock。
+              直接留空即可继续本地训练。
             </p>
           </div>
         </div>

@@ -75,7 +75,7 @@ export function CoachFeedbackView(props: { coach: CoachResult }) {
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">教练反馈</span>
           <span className="rounded-full border border-border/70 bg-background px-2 py-0.5 text-[11px] text-muted-foreground">
-            {props.coach.mode === "mock" ? "Mock" : "OpenAI"}
+            结构化评估
           </span>
         </div>
         <div className="rounded-full bg-foreground px-3 py-1 text-xs font-semibold text-background tabular-nums">
