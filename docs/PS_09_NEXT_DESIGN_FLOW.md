@@ -63,7 +63,7 @@
 
 ## 4. 题型矩阵设计（保留普通题）
 
-你的核心诉求是“继续往下做，但普通题要保留”，本方案采用三类题型并行：
+你的核心诉求是“继续往下做，但普通题要保留”，本方案采用四类题型并行：
 
 ### 4.1 Type A：`prompt_case`（普通题，默认主力）
 
@@ -94,7 +94,14 @@
 
 这能先验证题型价值，后续再决定是否引入真实沙箱执行。
 
-### 4.4 `code_case_multi` 与 `build_sim_case` 的题目结构
+### 4.4 Type D：`template_case`（教学样板题，只读看板）
+
+- 形态：固定 2-3 轮示例提示词迭代（小白版 -> 改进版 -> 标准版）。
+- 目标：用于教学视频演示“如何描述你想要的程序”。
+- 交互：只读看板，不允许提交答题，不进入评分流程。
+- 数据：通过 `drill_template_rounds` 存轮次正文与讲解说明。
+
+### 4.5 `code_case_multi` 与 `build_sim_case` 的题目结构
 
 - 任务描述：业务背景、现象、目标结果。
 - 附件上下文：文件树、关键文件、日志/报错片段。
@@ -102,7 +109,7 @@
 - 验收标准：功能正确性、风险控制、可验证性。
 - 提交要求：要求用户写“给 AI 的提示词”，并说明期望输出格式。
 
-### 4.5 训练交互模式（落地你的设想）
+### 4.6 训练交互模式（落地你的设想）
 
 在训练页增加“反馈模式”选项卡（默认可配置）：
 
@@ -119,7 +126,7 @@
 - 每次大模型输出后，都生成并保存“当前轮评估”。
 - 区别仅在于“是否立即展示给用户”。
 
-### 4.6 前端展示建议（简洁版）
+### 4.7 前端展示建议（简洁版）
 
 - 训练页右侧新增 `反馈模式` 选项卡（过程引导 / 终局评分）。
 - 左侧附件区保持 Tab 结构：`题面` / `文件` / `日志`。
@@ -131,7 +138,7 @@
 在不破坏现有 `drills` 的前提下做增量：
 
 - `drills` 新字段：
-- `drill_type` (`prompt_case` | `code_case_multi` | `build_sim_case`)
+- `drill_type` (`prompt_case` | `code_case_multi` | `build_sim_case` | `template_case`)
 - `published_at`（已有，可强化前端排序）
 - `module_id`（nullable）
 
@@ -163,6 +170,9 @@
 
 - 新表 `drill_module_items`：
 - `module_id`、`drill_id`、`position`
+
+- 新表 `drill_template_rounds`：
+- `drill_id`、`round_no`、`version_label`、`prompt_text`、`teaching_notes_md`
 
 说明：仍优先用 SQL seed + 最小后台维护，不先上完整 CMS。
 
@@ -436,3 +446,45 @@
 - `npm run db:migrate`：通过（含 008）
 - `npm run db:seed`：通过（含 007/008/009）
 - `npm run db:status`：通过（`drills=14`、`drill_assets=16`、`drill_schedule=42`、`drill_attempts=5`）
+
+### Task 14：教学样板题（`template_case`）上线（已完成，2026-03-01）
+
+需求背景：
+
+- 面向 0 基础教学视频，需要固定 2-3 轮提示词迭代样板。
+- 该题型是看板，不允许用户交互答题。
+
+已落地：
+
+- 新增迁移 `db/migrations/009_template_case_rounds.sql`：
+- 扩展 `drills.drill_type` 新值：`template_case`
+- 新表 `drill_template_rounds`（样板轮次内容）
+- 前端新增只读看板组件（样板题进入后不显示输入提交区）：
+- `/drills/[id]` 与 `/drills/today` 自动识别 `template_case`
+- 左侧保留题面/附件，上侧右侧展示固定轮次样板
+- API 防护：`/api/coach` 对 `template_case` 返回只读错误，避免误提交流程
+- 后台题型下拉新增 `template_case`
+
+验收点：
+
+- 样板题可展示 2-3 轮固定 prompt 迭代与讲解说明。
+- 样板题页面不支持提交与评分操作。
+
+### Task 15：每日发题规范与项目专属 Skill（已完成，2026-03-01）
+
+已落地：
+
+- 新增项目内 skill：
+- `.codex/skills/daily-drill-content-ops/SKILL.md`
+- 新增每日发布规范文档：
+- `docs/PS_14_DAILY_CONTENT_OPS.md`
+- 新增脚本：
+- `scripts/new-daily-seed.ps1`
+- 自动生成命名规范文件：`NNN_daily_YYYYMMDD_<topic>.sql`
+- 新增样板题种子：
+- `db/seed/010_template_case_samples.sql`
+
+验收点：
+
+- 可按固定流程每天发布“样板题 + 练习题”。
+- SQL 命名、执行顺序与幂等写法有统一标准。

@@ -1,6 +1,6 @@
 # [PromptSkiller] 验收清单（当前版本）
 
-本文档用于快速验证当前产品闭环是否正常（截至 2026-02-28）。
+本文档用于快速验证当前产品闭环是否正常（截至 2026-03-01）。
 
 ## 0. 先决条件
 
@@ -28,7 +28,7 @@ npm run build
 
 预期结果：
 
-- `db:migrate` 成功执行到 `008_drill_user_progress.sql`。
+- `db:migrate` 成功执行到 `009_template_case_rounds.sql`。
 - `db:status` 可连通数据库并输出模块相关表：
 - `drill_assets`
 - `drill_sessions`
@@ -36,6 +36,7 @@ npm run build
 - `drill_modules`
 - `drill_module_items`
 - `drill_user_progress`
+- `drill_template_rounds`
 - `lint/typecheck/test/build` 全通过。
 
 ## 2. 本地启动
@@ -64,7 +65,7 @@ npm run dev
 - 登录状态下提交训练后，模块/题库中的练习次数会实时刷新（云端聚合）。
 - 支持 `?view=modules` 直达模块视图。
 - 支持 `?module=<slug>` 在题库视图中过滤该模块题目。
-- 卡片显示题型标签（普通题/多文件题/模拟构建题）。
+- 卡片显示题型标签（普通题/多文件题/模拟构建题/教学样板题）。
 
 ### 3.3 今日训练（核心）
 
@@ -80,6 +81,7 @@ npm run dev
 - 训练页左侧可切换 `题面/文件/日志`。
 - 普通题无附件时不报错。
 - 复杂题可查看多文件与日志内容。
+- `template_case`（教学样板题）进入只读看板，不出现提交输入框。
 
 反馈模式：
 

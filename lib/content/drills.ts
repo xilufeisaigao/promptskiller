@@ -9,7 +9,7 @@ export type Drill = {
   publishedAt?: string | null;
 };
 
-export type DrillType = "prompt_case" | "code_case_multi" | "build_sim_case";
+export type DrillType = "prompt_case" | "code_case_multi" | "build_sim_case" | "template_case";
 
 export type DrillAssetKind = "file" | "log" | "spec";
 
@@ -20,6 +20,15 @@ export type DrillAsset = {
   path: string;
   contentText: string;
   orderNo: number;
+};
+
+export type DrillTemplateRound = {
+  id: string;
+  drillId: string;
+  roundNo: number;
+  versionLabel: string;
+  promptText: string;
+  teachingNotesMd: string | null;
 };
 
 export type DrillModuleLevel = "starter" | "intermediate" | "advanced";

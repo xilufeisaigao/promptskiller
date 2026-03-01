@@ -36,8 +36,9 @@ PromptSkiller 是一个「提示词训练器」：
 
 ### 已上线（MVP+1）
 
-- 三题型并行：`prompt_case` / `code_case_multi` / `build_sim_case`。
+- 四题型并行：`prompt_case` / `code_case_multi` / `build_sim_case` / `template_case`。
 - 复杂题附件：`题面/文件/日志` 三类附件上下文展示。
+- 教学样板题：`template_case` 只读看板（固定 2-3 轮提示词迭代展示，不支持提交）。
 - 训练反馈模式：`过程引导` / `终局评分`。
 - 反馈模式默认值可配置；终局模式支持中途查看“简版评分”（仅分数）。
 - 会话轮次模型：每轮评估持久化并支持终局统一复盘。

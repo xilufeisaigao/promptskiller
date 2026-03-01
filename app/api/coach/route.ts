@@ -54,6 +54,12 @@ export async function POST(req: Request) {
       { status: 404 },
     );
   }
+  if (drill.drillType === "template_case") {
+    return NextResponse.json(
+      { ok: false, reason: "教学样板题为只读看板，不支持提交。" },
+      { status: 400 },
+    );
+  }
 
   const trimmedKey = (openaiApiKey || "").trim();
   const shouldUseOpenAI = Boolean(trimmedKey);

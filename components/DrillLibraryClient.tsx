@@ -32,6 +32,7 @@ function parseTimeMs(value?: string | null): number {
 function typeLabel(type: Drill["drillType"]): string {
   if (type === "code_case_multi") return "多文件题";
   if (type === "build_sim_case") return "模拟构建题";
+  if (type === "template_case") return "教学样板题";
   return "普通题";
 }
 

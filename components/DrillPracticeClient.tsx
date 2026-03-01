@@ -76,6 +76,7 @@ const DRILL_TYPE_LABEL: Record<Drill["drillType"], string> = {
   prompt_case: "普通题",
   code_case_multi: "多文件题",
   build_sim_case: "模拟构建题",
+  template_case: "教学样板题",
 };
 
 function formatDrillCode(n: number): string {

@@ -7,6 +7,7 @@ import {
   type Drill,
   type DrillAsset,
   type DrillAssetKind,
+  type DrillTemplateRound,
   type DrillModule,
   type DrillModuleLevel,
 } from "./drills";
@@ -36,6 +37,15 @@ type DrillAssetRow = {
   order_no: number;
 };
 
+type DrillTemplateRoundRow = {
+  id: string;
+  drill_id: string;
+  round_no: number;
+  version_label: string;
+  prompt_text: string;
+  teaching_notes_md: string | null;
+};
+
 type DrillModuleRow = {
   id: string;
   slug: string;
@@ -56,7 +66,9 @@ type DrillModuleItemRow = {
 function normalizeDrillType(
   value: string | null | undefined,
 ): Drill["drillType"] {
-  if (value === "code_case_multi" || value === "build_sim_case") return value;
+  if (value === "code_case_multi" || value === "build_sim_case" || value === "template_case") {
+    return value;
+  }
   return "prompt_case";
 }
 
@@ -269,5 +281,34 @@ export async function listDrillModules(): Promise<DrillModule[]> {
     return out;
   } catch {
     return DRILL_MODULES;
+  }
+}
+
+export async function listDrillTemplateRounds(
+  drillId: string,
+): Promise<DrillTemplateRound[]> {
+  try {
+    const supabase = createSupabasePublicClient();
+    const { data, error } = await supabase
+      .from("drill_template_rounds")
+      .select("id,drill_id,round_no,version_label,prompt_text,teaching_notes_md")
+      .eq("drill_id", drillId)
+      .order("round_no", { ascending: true });
+
+    if (error) throw error;
+    if (!data || data.length === 0) return [];
+
+    return (data as DrillTemplateRoundRow[]).map((row) => ({
+      id: row.id,
+      drillId: row.drill_id,
+      roundNo: Number.isFinite(Number(row.round_no))
+        ? Math.max(1, Math.round(Number(row.round_no)))
+        : 1,
+      versionLabel: row.version_label,
+      promptText: row.prompt_text,
+      teachingNotesMd: row.teaching_notes_md,
+    }));
+  } catch {
+    return [];
   }
 }

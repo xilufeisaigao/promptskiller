@@ -53,6 +53,10 @@
 - `final_only` 模式：每轮入库但隐藏，完成会话后统一显示终局报告
 - 可选中途简版评分：仅展示分数，不展示改进建议（由本地设置开关控制）
 
+补充：
+
+- `template_case` 不进入提交链路，页面只渲染固定轮次看板（`drill_template_rounds`）。
+
 ## 模块链路（Module Flow）
 
 1. 读取 `drill_modules` 与 `drill_module_items`。
@@ -73,6 +77,7 @@
 - 训练页采用清晰双栏：左侧题面+附件+输入，右侧反馈模式+反馈+历史。
 - 支持普通题与复杂题共存：无附件题不会增加多余操作成本。
 - `build_sim_case` 新增“本轮模拟产物”卡片，展示变更文件与 patch 预览。
+- `template_case` 使用只读看板布局：左侧题面/附件，右侧固定轮次示例与讲解要点。
 - 题库页支持“题库视图/模块视图”切换，模块视图强调路径与进度。
 
 ## AI Provider 适配策略
@@ -83,10 +88,10 @@
 
 ## 数据与权限设计（RLS）
 
-- 公共可读：`drills`、`drill_assets`、`drill_schedule`、`drill_modules`、`drill_module_items`、周赛相关表。
+- 公共可读：`drills`、`drill_assets`、`drill_template_rounds`、`drill_schedule`、`drill_modules`、`drill_module_items`、周赛相关表。
 - 用户私有：`drill_attempts`、`drill_sessions`、`drill_session_rounds`（仅 owner 可写）。
 - 用户私有聚合读：`drill_user_progress`（owner 可读，触发器自动写入）。
-- 管理员能力：`drills`、`drill_assets`、`drill_schedule`、`drill_modules`、`drill_module_items` 写权限。
+- 管理员能力：`drills`、`drill_assets`、`drill_template_rounds`、`drill_schedule`、`drill_modules`、`drill_module_items` 写权限。
 - 管理员可读：训练提交与会话轮次全量读取（运营统计）。
 
 ## 内容发布机制（当前）

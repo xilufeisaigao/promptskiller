@@ -18,17 +18,22 @@
 10. [PS_11_PROJECT_SNAPSHOT_2026-02-28.md](./PS_11_PROJECT_SNAPSHOT_2026-02-28.md)：项目快照增量（管理员后台上线后）
 11. [PS_12_PROJECT_SNAPSHOT_2026-02-28.md](./PS_12_PROJECT_SNAPSHOT_2026-02-28.md)：项目快照增量（题型扩展 + 模块体系上线）
 12. [PS_13_PROJECT_SNAPSHOT_2026-02-28.md](./PS_13_PROJECT_SNAPSHOT_2026-02-28.md)：项目快照增量（模块收口 + 云端进度 + 造数）
+13. [PS_14_DAILY_CONTENT_OPS.md](./PS_14_DAILY_CONTENT_OPS.md)：每日发题规范（四题型建题 + SQL 命名 + 上架流程）
+14. [PS_15_PROJECT_SNAPSHOT_2026-03-01.md](./PS_15_PROJECT_SNAPSHOT_2026-03-01.md)：项目快照增量（教学样板题 + 项目专属内容运营 skill）
 
 ## 当前文档基线
 
 - 本次已清理过时文档 `PS_06_EXECUTION_PLAN.md`（该文件属于开发前规划，已不再反映现状）。
 - 文档内容统一同步到当前实现：题库页面、今日 3 题推荐、可调分栏练习区、周赛提交流程、投票与个人统计。
-- 数据库快照来自 `npm run db:status`（2026-02-28）：`drills=14`、`drill_assets=16`、`drill_schedule=42`、`drill_attempts=5`、`weekly_challenges=1`。
+- 数据库快照来自 `npm run db:status`（2026-03-01）：`drills=15`、`drill_assets=16`、`drill_template_rounds=3`、`drill_schedule=45`、`drill_attempts=6`、`weekly_challenges=1`。
 - 新增 `PS_09_NEXT_DESIGN_FLOW.md`，用于承接 MVP 后的产品设计与信息架构升级。
 - 新增 `PS_10_ADMIN_ACCOUNT_BOOTSTRAP.md`，记录管理员账号 SQL 开通结果。
 - 新增 `PS_11_PROJECT_SNAPSHOT_2026-02-28.md`，保留 `PS_08` 的同时追加最新快照。
 - 新增 `PS_12_PROJECT_SNAPSHOT_2026-02-28.md`，记录 Sprint C/B（题型扩展 + 模块体系）完成状态。
 - 新增 `PS_13_PROJECT_SNAPSHOT_2026-02-28.md`，记录本轮收口（云端进度、终局中途简版评分、扩展种子数据）完成状态。
+- 新增 `PS_14_DAILY_CONTENT_OPS.md`，固化“每天发布样板题 + 练习题”操作标准，并配套项目内 skill。
+- 新增项目内 skill：`.codex/skills/daily-drill-content-ops/SKILL.md`（内容运营标准流程）。
+- 新增 `PS_15_PROJECT_SNAPSHOT_2026-03-01.md`，记录 `template_case` 看板题型与日更发布流程落地状态。
 
 ## 写作原则
 

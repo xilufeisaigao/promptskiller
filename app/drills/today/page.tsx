@@ -1,10 +1,12 @@
 import Link from "next/link";
 
 import { DrillPracticeClient } from "@/components/DrillPracticeClient";
+import { TemplateDrillBoardClient } from "@/components/TemplateDrillBoardClient";
 import {
   listDrillAssets,
   listDrills,
   listScheduledDrillsForUtcDate,
+  listDrillTemplateRounds,
 } from "@/lib/content/drills-source";
 import { pickDrillsForUtcDate } from "@/lib/content/pick";
 
@@ -34,6 +36,10 @@ export default async function TodayDrillPage(props: {
     todayDrills.find((x) => x.id === (searchParams.id || "").trim()) ??
     todayDrills[0]!;
   const assets = await listDrillAssets(selected.id);
+  const templateRounds =
+    selected.drillType === "template_case"
+      ? await listDrillTemplateRounds(selected.id)
+      : [];
 
   return (
     <div className="grid gap-6">
@@ -88,7 +94,15 @@ export default async function TodayDrillPage(props: {
         })}
       </div>
 
-      <DrillPracticeClient drill={selected} assets={assets} />
+      {selected.drillType === "template_case" ? (
+        <TemplateDrillBoardClient
+          drill={selected}
+          assets={assets}
+          rounds={templateRounds}
+        />
+      ) : (
+        <DrillPracticeClient drill={selected} assets={assets} />
+      )}
     </div>
   );
 }

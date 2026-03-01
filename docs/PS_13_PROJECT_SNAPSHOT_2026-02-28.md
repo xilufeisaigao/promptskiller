@@ -2,6 +2,8 @@
 
 说明：该文档是对 [PS_12_PROJECT_SNAPSHOT_2026-02-28.md](./PS_12_PROJECT_SNAPSHOT_2026-02-28.md) 的继续增量快照，原有快照全部保留不删。
 
+> 注：该快照已由 [PS_15_PROJECT_SNAPSHOT_2026-03-01.md](./PS_15_PROJECT_SNAPSHOT_2026-03-01.md) 增量覆盖；本文件继续保留用于历史追溯。
+
 ## 快照信息
 
 - 快照日期：2026-02-28（Asia/Shanghai）

@@ -12,6 +12,7 @@
 - `006_drill_sessions_and_rounds.sql`：会话表 `drill_sessions`、轮次表 `drill_session_rounds`
 - `007_drill_modules.sql`：模块表 `drill_modules`、模块题目表 `drill_module_items`
 - `008_drill_user_progress.sql`：用户训练进度聚合表 `drill_user_progress`
+- `009_template_case_rounds.sql`：样板题轮次表 `drill_template_rounds` + `template_case` 题型
 
 ## 核心训练域表
 
@@ -35,7 +36,7 @@
 - `title`：`text`，题目标题
 - `body_md`：`text`，题面正文
 - `difficulty`：`smallint`，难度 1-5
-- `drill_type`：`text`，`prompt_case` / `code_case_multi` / `build_sim_case`
+- `drill_type`：`text`，`prompt_case` / `code_case_multi` / `build_sim_case` / `template_case`
 - `tags`：`text[]`，标签
 - `module_id`：`text`，可选，快捷模块归属（外键到 `drill_modules.id`）
 - `published_at`：`timestamptz`，发布时间
@@ -146,6 +147,24 @@
 - 通过触发器 `drill_attempts_upsert_progress` 在每次 `drill_attempts` 插入后自动 upsert
 - 支持历史回填（migration 内含 backfill SQL）
 
+### `drill_template_rounds`
+
+用途：教学样板题（`template_case`）固定轮次内容，看板只读展示。
+
+- `id`：`uuid`，主键
+- `drill_id`：`text`，外键到 `drills.id`
+- `round_no`：`int`，轮次（通常 1-3）
+- `version_label`：`text`，版本标签（例如“第 1 版（小白描述）”）
+- `prompt_text`：`text`，该轮示例提示词正文
+- `teaching_notes_md`：`text`（可空），教学讲解要点
+- `created_at`：`timestamptz`
+- `updated_at`：`timestamptz`
+
+约束：
+
+- `unique (drill_id, round_no)`
+- `check (round_no > 0)`
+
 ### `drill_modules`
 
 用途：学习路径模块主表。
@@ -192,10 +211,10 @@
 
 ## 角色与权限（RLS）摘要
 
-- Public read：`drills`、`drill_assets`、`drill_schedule`、`drill_modules`、`drill_module_items`、`weekly_challenges`、`challenge_submissions`、`submission_votes`
+- Public read：`drills`、`drill_assets`、`drill_template_rounds`、`drill_schedule`、`drill_modules`、`drill_module_items`、`weekly_challenges`、`challenge_submissions`、`submission_votes`
 - User owner：`drill_attempts`、`drill_sessions`、`drill_session_rounds`（普通用户仅可读写自己的训练数据）
 - User owner read：`drill_user_progress`（用户仅读自己的聚合进度）
-- Admin write：`drills`、`drill_assets`、`drill_schedule`、`drill_modules`、`drill_module_items`
+- Admin write：`drills`、`drill_assets`、`drill_template_rounds`、`drill_schedule`、`drill_modules`、`drill_module_items`
 - Admin read：`drill_attempts` / `drill_sessions` / `drill_session_rounds` / `drill_user_progress` 全量读取（后台统计）
 
 ## 管理员相关函数与触发器
@@ -204,19 +223,20 @@
 - `public.handle_new_user_profile()`：新建 auth 用户时自动补 `profiles` 行
 - `touch_*_updated_at` 系列触发器：自动维护 `updated_at`
 
-## 最近一次数据库状态（2026-02-28）
+## 最近一次数据库状态（2026-03-01）
 
-采集时间：`2026-02-28 13:45:00 UTC`
+采集时间：`2026-03-01 08:34:41 UTC`
 
-- `drills = 14`
+- `drills = 15`
 - `drill_assets = 16`
+- `drill_template_rounds = 3`
 - `drill_modules = 3`
 - `drill_module_items = 15`
-- `drill_schedule = 42`
-- `drill_sessions = 0`
-- `drill_session_rounds = 0`
-- `drill_attempts = 5`
-- `drill_user_progress = 4`
+- `drill_schedule = 45`
+- `drill_sessions = 1`
+- `drill_session_rounds = 1`
+- `drill_attempts = 6`
+- `drill_user_progress = 5`
 - `weekly_challenges = 1`
 
 可复查命令：

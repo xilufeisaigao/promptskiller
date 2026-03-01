@@ -10,7 +10,7 @@ type AuthState =
   | { kind: "anon" }
   | { kind: "forbidden"; userId: string; email: string | null }
   | { kind: "ready"; userId: string; email: string | null };
-type DrillType = "prompt_case" | "code_case_multi" | "build_sim_case";
+type DrillType = "prompt_case" | "code_case_multi" | "build_sim_case" | "template_case";
 type AssetKind = "file" | "log" | "spec";
 type Drill = {
   id: string;
@@ -58,6 +58,7 @@ const typeLabel: Record<DrillType, string> = {
   prompt_case: "普通题",
   code_case_multi: "多文件题",
   build_sim_case: "模拟构建题",
+  template_case: "教学样板题",
 };
 
 export default function AdminPage() {
@@ -166,7 +167,12 @@ export default function AdminPage() {
         title: String(data.title ?? ""),
         body: String(data.body_md ?? ""),
         difficulty: Math.min(5, Math.max(1, Math.round(Number(data.difficulty) || 1))) as 1 | 2 | 3 | 4 | 5,
-        drillType: data.drill_type === "code_case_multi" || data.drill_type === "build_sim_case" ? data.drill_type : "prompt_case",
+        drillType:
+          data.drill_type === "code_case_multi" ||
+          data.drill_type === "build_sim_case" ||
+          data.drill_type === "template_case"
+            ? data.drill_type
+            : "prompt_case",
         tags: ((data.tags as string[] | null) ?? []).join(", "),
         publishedAt: toLocal(data.published_at as string | null),
       });
@@ -393,6 +399,7 @@ export default function AdminPage() {
               <option value="prompt_case">普通题（prompt_case）</option>
               <option value="code_case_multi">多文件题（code_case_multi）</option>
               <option value="build_sim_case">模拟构建题（build_sim_case）</option>
+              <option value="template_case">教学样板题（template_case）</option>
             </select>
             <input value={createForm.tags} onChange={(e) => setCreateForm((v) => ({ ...v, tags: e.target.value }))} placeholder="标签逗号分隔" className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm" />
           </div>
@@ -416,6 +423,7 @@ export default function AdminPage() {
               <option value="prompt_case">普通题（prompt_case）</option>
               <option value="code_case_multi">多文件题（code_case_multi）</option>
               <option value="build_sim_case">模拟构建题（build_sim_case）</option>
+              <option value="template_case">教学样板题（template_case）</option>
             </select>
             <input type="datetime-local" value={editForm.publishedAt} onChange={(e) => setEditForm((v) => ({ ...v, publishedAt: e.target.value }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm" />
           </div>
