@@ -110,6 +110,19 @@ function normalizeScores(raw: UnknownRecord): CoachFeedback["scores"] {
     "边界情况",
     "测试/边界",
   ]);
+  const processControl = pickNumber(raw, [
+    "process_control",
+    "processControl",
+    "iteration_strategy",
+    "iteration",
+    "workflow_control",
+    "rollback_plan",
+    "流程控制",
+    "迭代策略",
+    "过程控制",
+    "回滚",
+    "分步计划",
+  ]);
 
   return {
     context: clampInt(context ?? 0, 0, 20),
@@ -117,14 +130,15 @@ function normalizeScores(raw: UnknownRecord): CoachFeedback["scores"] {
     output_format: clampInt(outputFormat ?? 0, 0, 20),
     acceptance_criteria: clampInt(acceptance ?? 0, 0, 20),
     tests_and_edge_cases: clampInt(tests ?? 0, 0, 20),
+    process_control: clampInt(processControl ?? 0, 0, 20),
   };
 }
 
 function distributeScoreTotal(total: number): CoachFeedback["scores"] {
-  const clamped = clampInt(total, 0, 100);
-  const base = Math.floor(clamped / 5);
-  const extra = clamped % 5;
-  const slots = [base, base, base, base, base].map((v, i) =>
+  const clamped = clampInt(total, 0, 120);
+  const base = Math.floor(clamped / 6);
+  const extra = clamped % 6;
+  const slots = [base, base, base, base, base, base].map((v, i) =>
     clampInt(v + (i < extra ? 1 : 0), 0, 20),
   );
 
@@ -134,6 +148,7 @@ function distributeScoreTotal(total: number): CoachFeedback["scores"] {
     output_format: slots[2]!,
     acceptance_criteria: slots[3]!,
     tests_and_edge_cases: slots[4]!,
+    process_control: slots[5]!,
   };
 }
 
@@ -152,15 +167,17 @@ export function normalizeCoachFeedbackPayload(input: unknown): unknown {
     scores.constraints +
     scores.output_format +
     scores.acceptance_criteria +
-    scores.tests_and_edge_cases;
+    scores.tests_and_edge_cases +
+    scores.process_control;
 
-  const score_total = clampInt(scoreTotalRaw ?? scoreFromDims, 0, 100);
+  const score_total = clampInt(scoreTotalRaw ?? scoreFromDims, 0, 120);
   const allDimsZero =
     scores.context === 0 &&
     scores.constraints === 0 &&
     scores.output_format === 0 &&
     scores.acceptance_criteria === 0 &&
-    scores.tests_and_edge_cases === 0;
+    scores.tests_and_edge_cases === 0 &&
+    scores.process_control === 0;
   const normalizedScores =
     allDimsZero && score_total > 0 ? distributeScoreTotal(score_total) : scores;
 
@@ -211,7 +228,7 @@ export function coerceCoachFeedback(
     pickNumber(normalizedRecord, ["score_total", "scoreTotal", "score"]) ??
     fallbackScore ??
     0;
-  const score_total = clampInt(rawScore, 0, 100);
+  const score_total = clampInt(rawScore, 0, 120);
   const scores =
     score_total > 0
       ? distributeScoreTotal(score_total)
@@ -221,6 +238,7 @@ export function coerceCoachFeedback(
           output_format: 0,
           acceptance_criteria: 0,
           tests_and_edge_cases: 0,
+          process_control: 0,
         };
 
   return {

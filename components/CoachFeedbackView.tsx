@@ -79,16 +79,17 @@ export function CoachFeedbackView(props: { coach: CoachResult }) {
           </span>
         </div>
         <div className="rounded-full bg-foreground px-3 py-1 text-xs font-semibold text-background tabular-nums">
-          总分 {f.score_total}/100
+          总分 {f.score_total}/120
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-5">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
         <ScorePill label="上下文" value={f.scores.context} />
         <ScorePill label="约束" value={f.scores.constraints} />
         <ScorePill label="输出格式" value={f.scores.output_format} />
         <ScorePill label="验收标准" value={f.scores.acceptance_criteria} />
         <ScorePill label="测试/边界" value={f.scores.tests_and_edge_cases} />
+        <ScorePill label="流程控制" value={f.scores.process_control} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">

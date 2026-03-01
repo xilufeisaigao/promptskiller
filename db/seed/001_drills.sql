@@ -1,6 +1,6 @@
 -- [PromptSkiller] Seed drills (idempotent)
 
-insert into public.drills (id, display_no, title, body_md, difficulty, tags, published_at)
+insert into public.drills (id, display_no, title, body_md, difficulty, tags, drill_type, published_at)
 values
 (
   'drill-debug-minimal-repro',
@@ -20,6 +20,7 @@ values
 $$,
   2,
   array['debug','communication'],
+  'prompt_case',
   now()
 ),
 (
@@ -40,6 +41,7 @@ $$,
 $$,
   3,
   array['testing','spec'],
+  'prompt_case',
   now()
 ),
 (
@@ -62,6 +64,7 @@ $$,
 $$,
   4,
   array['refactor','quality'],
+  'prompt_case',
   now()
 ),
 (
@@ -82,6 +85,7 @@ $$,
 $$,
   4,
   array['api','design'],
+  'prompt_case',
   now()
 ),
 (
@@ -98,6 +102,7 @@ $$,
 $$,
   2,
   array['frontend','spec'],
+  'prompt_case',
   now()
 )
 on conflict (id) do update set
@@ -105,4 +110,5 @@ on conflict (id) do update set
   body_md = excluded.body_md,
   difficulty = excluded.difficulty,
   tags = excluded.tags,
+  drill_type = excluded.drill_type,
   published_at = excluded.published_at;

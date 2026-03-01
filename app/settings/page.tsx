@@ -25,6 +25,12 @@ export default function SettingsPage() {
   const [apiKey, setApiKey] = useState(saved.openaiApiKey ?? "");
   const [baseUrl, setBaseUrl] = useState(saved.openaiBaseUrl ?? initialPreset.baseUrl);
   const [model, setModel] = useState(saved.openaiModel ?? initialPreset.defaultModel);
+  const [defaultFeedbackMode, setDefaultFeedbackMode] = useState<"guided" | "final_only">(
+    saved.defaultFeedbackMode ?? "guided",
+  );
+  const [finalOnlyAllowMidReview, setFinalOnlyAllowMidReview] = useState(
+    Boolean(saved.finalOnlyAllowMidReview),
+  );
 
   const [status, setStatus] = useState<
     | { kind: "idle" }
@@ -50,9 +56,12 @@ export default function SettingsPage() {
   async function onTestAndSave() {
     const key = apiKey.trim();
     if (!key) {
-      // Empty key keeps local practice mode; clear saved settings.
-      clearLocalSettings();
-      setSaved({});
+      // Keep training behavior settings even when model key is empty.
+      saveLocalSettings({
+        defaultFeedbackMode,
+        finalOnlyAllowMidReview,
+      });
+      setSaved(loadLocalSettings());
       setStatus({ kind: "idle" });
       return;
     }
@@ -86,6 +95,8 @@ export default function SettingsPage() {
         openaiApiKey: key,
         openaiBaseUrl: baseUrl.trim() || undefined,
         openaiModel: model.trim() || getProviderPreset(provider).defaultModel,
+        defaultFeedbackMode,
+        finalOnlyAllowMidReview,
       });
       setSaved(loadLocalSettings());
       setStatus({ kind: "ok" });
@@ -101,6 +112,8 @@ export default function SettingsPage() {
     setApiKey("");
     setBaseUrl(getProviderPreset("openai").baseUrl);
     setModel(getProviderPreset("openai").defaultModel);
+    setDefaultFeedbackMode("guided");
+    setFinalOnlyAllowMidReview(false);
     setSaved({});
     setStatus({ kind: "idle" });
   }
@@ -177,6 +190,38 @@ export default function SettingsPage() {
             <p className="text-xs text-muted-foreground">
               未填写时使用默认模型 `{getProviderPreset(provider).defaultModel}`。
             </p>
+          </div>
+
+          <div className="grid gap-2 rounded-2xl border border-border/60 bg-muted/20 p-4">
+            <p className="text-sm font-medium">训练交互设置</p>
+            <div className="grid gap-2">
+              <label className="text-xs text-muted-foreground">默认反馈模式</label>
+              <select
+                value={defaultFeedbackMode}
+                onChange={(e) =>
+                  setDefaultFeedbackMode(
+                    e.target.value === "final_only" ? "final_only" : "guided",
+                  )
+                }
+                className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm outline-none ring-offset-background focus:ring-2 focus:ring-ring"
+              >
+                <option value="guided">过程引导（每轮即时反馈）</option>
+                <option value="final_only">终局评分（完成后统一反馈）</option>
+              </select>
+              <label className="inline-flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={finalOnlyAllowMidReview}
+                  onChange={(e) => setFinalOnlyAllowMidReview(e.target.checked)}
+                  className="mt-0.5 size-4 rounded border-border/70"
+                />
+                <span className="text-sm text-muted-foreground">
+                  终局评分模式允许中途查看单轮
+                  <span className="font-medium text-foreground">简版评分</span>
+                  （仅分数，不展示改进建议）。
+                </span>
+              </label>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3 pt-1">

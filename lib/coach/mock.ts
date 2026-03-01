@@ -62,6 +62,17 @@ export function mockCoachFeedback(input: {
   const hasTests =
     includesAny(prompt, ["测试", "用例", "边界", "验证", "检查清单"]) ||
     includesAny(promptLower, ["test", "edge case", "verify", "checklist"]);
+  const hasProcessControl =
+    includesAny(prompt, ["分步", "阶段", "迭代", "回滚", "里程碑", "每轮"]) ||
+    includesAny(promptLower, [
+      "phase",
+      "step-by-step",
+      "iteration",
+      "round",
+      "rollback",
+      "milestone",
+      "incremental",
+    ]);
 
   const scores = {
     context: hasContext ? 18 : prompt.length >= 60 ? 10 : 4,
@@ -69,6 +80,7 @@ export function mockCoachFeedback(input: {
     output_format: hasOutputFormat ? 18 : 6,
     acceptance_criteria: hasAcceptance ? 18 : 4,
     tests_and_edge_cases: hasTests ? 18 : 4,
+    process_control: hasProcessControl ? 18 : 4,
   };
 
   // Slightly penalize super short prompts.
@@ -82,9 +94,10 @@ export function mockCoachFeedback(input: {
       scores.constraints +
       scores.output_format +
       scores.acceptance_criteria +
-      scores.tests_and_edge_cases,
+      scores.tests_and_edge_cases +
+      scores.process_control,
     0,
-    100,
+    120,
   );
 
   const missing_items: string[] = [];
@@ -93,6 +106,7 @@ export function mockCoachFeedback(input: {
   if (scores.output_format < 15) missing_items.push("指定输出格式（例如 Markdown 小标题、表格、JSON schema）");
   if (scores.acceptance_criteria < 15) missing_items.push("写清验收标准（什么算完成/正确，如何判断）");
   if (scores.tests_and_edge_cases < 15) missing_items.push("要求列出边界情况与验证步骤（测试/检查清单）");
+  if (scores.process_control < 15) missing_items.push("补充流程控制（分阶段目标、每轮产出、回滚策略）");
 
   const ambiguities = findAmbiguousPhrases(prompt).map(
     (p) => `出现模糊词「${p}」：建议改为可量化/可验证的描述`,
@@ -115,6 +129,10 @@ export function mockCoachFeedback(input: {
   }
   if (scores.tests_and_edge_cases < 15) {
     suggested_questions_to_answer.push("需要覆盖哪些边界情况？如何验证不回归？");
+  }
+  if (scores.process_control < 15) {
+    suggested_questions_to_answer.push("这次任务会拆成几轮？每轮目标和验收点分别是什么？");
+    suggested_questions_to_answer.push("如果当前轮失败，回滚与重试策略是什么？");
   }
 
   const rewrite_example = [
@@ -147,4 +165,3 @@ export function mockCoachFeedback(input: {
     rewrite_example,
   };
 }
-

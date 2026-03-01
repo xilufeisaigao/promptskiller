@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { listDrillModules } from "@/lib/content/drills-source";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const modules = (await listDrillModules()).slice(0, 3);
   const workflow = [
     {
       step: "01",
@@ -153,6 +155,42 @@ export default function HomePage() {
               </span>
               <h3 className="mt-2 text-sm font-semibold">{item.title}</h3>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.desc}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-border/60 bg-background p-6 sm:p-8">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium tracking-wide text-muted-foreground">
+              MODULES · BETA
+            </p>
+            <h2 className="mt-1 text-2xl font-semibold tracking-tight">
+              学习模块入口（已上线 Beta）
+            </h2>
+          </div>
+          <Link
+            href="/drills?view=modules"
+            className="rounded-full border border-border/70 bg-background px-3 py-1 text-[11px] text-muted-foreground hover:text-foreground"
+          >
+            打开模块视图
+          </Link>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          {modules.map((module) => (
+            <article
+              key={module.id}
+              className="rounded-2xl border border-border/60 bg-muted/20 p-4"
+            >
+              <p className="text-xs font-medium tracking-wide text-muted-foreground">
+                {module.level.toUpperCase()}
+              </p>
+              <p className="mt-1 text-sm font-semibold">{module.title}</p>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {module.description}
+              </p>
             </article>
           ))}
         </div>

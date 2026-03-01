@@ -1,7 +1,11 @@
 import Link from "next/link";
 
 import { DrillPracticeClient } from "@/components/DrillPracticeClient";
-import { listDrills } from "@/lib/content/drills-source";
+import {
+  listDrillAssets,
+  listDrills,
+  listScheduledDrillsForUtcDate,
+} from "@/lib/content/drills-source";
 import { pickDrillsForUtcDate } from "@/lib/content/pick";
 
 export const dynamic = "force-dynamic";
@@ -13,13 +17,23 @@ function drillCode(displayNo: number): string {
 export default async function TodayDrillPage(props: {
   searchParams: Promise<{ id?: string }>;
 }) {
+  const now = new Date();
   const drills = await listDrills();
-  const todayDrills = pickDrillsForUtcDate(drills, new Date(), 3);
-  const todayUtc = new Date().toISOString().slice(0, 10);
+  const scheduled = await listScheduledDrillsForUtcDate(now, 3);
+  const fallback = pickDrillsForUtcDate(drills, now, 3);
+  const merged = [...scheduled];
+  for (const drill of fallback) {
+    if (merged.some((x) => x.id === drill.id)) continue;
+    merged.push(drill);
+    if (merged.length >= 3) break;
+  }
+  const todayDrills = merged.slice(0, 3);
+  const todayUtc = now.toISOString().slice(0, 10);
   const searchParams = await props.searchParams;
   const selected =
     todayDrills.find((x) => x.id === (searchParams.id || "").trim()) ??
     todayDrills[0]!;
+  const assets = await listDrillAssets(selected.id);
 
   return (
     <div className="grid gap-6">
@@ -27,7 +41,9 @@ export default async function TodayDrillPage(props: {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">今日训练</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            每日推荐 3 题（UTC {todayUtc}），你可以任选一题开始训练。
+            {scheduled.length > 0
+              ? `管理员已发布今日题单（UTC ${todayUtc}），你可以任选一题开始训练。`
+              : `每日推荐 3 题（UTC ${todayUtc}），你可以任选一题开始训练。`}
           </p>
         </div>
         <div className="flex items-center gap-3 text-sm">
@@ -72,7 +88,7 @@ export default async function TodayDrillPage(props: {
         })}
       </div>
 
-      <DrillPracticeClient drill={selected} />
+      <DrillPracticeClient drill={selected} assets={assets} />
     </div>
   );
 }

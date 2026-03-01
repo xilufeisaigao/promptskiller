@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import {
+  buildMockBuildSimRoundOutput,
+  coerceBuildSimRoundOutput,
+} from "@/lib/coach/build-sim";
 import { mockCoachFeedback } from "@/lib/coach/mock";
 import type { CoachMode, CoachResult } from "@/lib/coach/types";
 import { getDrillById } from "@/lib/content/drills-source";
-import { createCoachFeedbackWithOpenAI } from "@/lib/openai/http";
+import {
+  createBuildSimRoundOutputWithOpenAI,
+  createCoachFeedbackWithOpenAI,
+} from "@/lib/openai/http";
 
 const BodySchema = z.object({
   drillId: z.string().min(1),
@@ -32,6 +39,7 @@ export async function POST(req: Request) {
   const {
     drillId,
     promptText,
+    attemptIndex,
     openaiProvider,
     openaiApiKey,
     openaiBaseUrl,
@@ -49,6 +57,8 @@ export async function POST(req: Request) {
 
   const trimmedKey = (openaiApiKey || "").trim();
   const shouldUseOpenAI = Boolean(trimmedKey);
+  const isBuildSimCase = drill.drillType === "build_sim_case";
+  const roundNo = (attemptIndex ?? 0) + 1;
 
   let mode: CoachMode = "mock";
   try {
@@ -63,12 +73,46 @@ export async function POST(req: Request) {
         promptText,
       });
 
-      const result: CoachResult = { mode, feedback };
+      let roundOutput = null;
+      if (isBuildSimCase) {
+        try {
+          const generated = await createBuildSimRoundOutputWithOpenAI({
+            apiKey: trimmedKey,
+            provider: openaiProvider,
+            baseUrl: openaiBaseUrl,
+            model: openaiModel,
+            drill,
+            promptText,
+          });
+          roundOutput = coerceBuildSimRoundOutput(generated);
+        } catch {
+          roundOutput = buildMockBuildSimRoundOutput({
+            drillTitle: drill.title,
+            promptText,
+            roundNo,
+            feedback,
+          });
+        }
+      }
+
+      const result: CoachResult = { mode, feedback, round_output: roundOutput };
       return NextResponse.json({ ok: true, result });
     }
 
     const feedback = mockCoachFeedback({ drill, promptText });
-    const result: CoachResult = { mode: "mock", feedback };
+    const roundOutput = isBuildSimCase
+      ? buildMockBuildSimRoundOutput({
+          drillTitle: drill.title,
+          promptText,
+          roundNo,
+          feedback,
+        })
+      : null;
+    const result: CoachResult = {
+      mode: "mock",
+      feedback,
+      round_output: roundOutput,
+    };
     return NextResponse.json({ ok: true, result });
   } catch (e) {
     // In "real" mode, fail loudly so the user can fix their key/settings.

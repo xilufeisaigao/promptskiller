@@ -8,25 +8,50 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/browser";
 type AuthState =
   | { kind: "loading" }
   | { kind: "anon" }
-  | { kind: "authed"; email: string | null };
+  | { kind: "authed"; email: string | null; isAdmin: boolean };
 
 export function UserMenuClient() {
   const [state, setState] = useState<AuthState>({ kind: "loading" });
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
+    let active = true;
+
+    async function loadAuthedState(session: { user: { id: string; email?: string | null } } | null) {
+      if (!active) return;
+      if (!session) {
+        setState({ kind: "anon" });
+        return;
+      }
+
+      const email = session.user.email ?? null;
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("is_admin")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (!active) return;
+      const isAdmin = !error && Boolean((data as { is_admin?: boolean } | null)?.is_admin);
+      setState({ kind: "authed", email, isAdmin });
+    }
 
     supabase.auth.getSession().then(({ data }) => {
-      const email = data.session?.user?.email ?? null;
-      setState(data.session ? { kind: "authed", email } : { kind: "anon" });
+      const session = data.session
+        ? { user: { id: data.session.user.id, email: data.session.user.email } }
+        : null;
+      void loadAuthedState(session);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const email = session?.user?.email ?? null;
-      setState(session ? { kind: "authed", email } : { kind: "anon" });
+      const next = session
+        ? { user: { id: session.user.id, email: session.user.email } }
+        : null;
+      void loadAuthedState(next);
     });
 
     return () => {
+      active = false;
       sub.subscription.unsubscribe();
     };
   }, []);
@@ -57,6 +82,14 @@ export function UserMenuClient() {
 
   return (
     <div className="flex items-center gap-2">
+      {state.isAdmin ? (
+        <Link
+          href="/admin"
+          className="rounded-full border border-border/70 bg-background px-3 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          后台
+        </Link>
+      ) : null}
       <Link
         href="/profile"
         className="rounded-full border border-border/70 bg-background px-3 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
@@ -74,4 +107,3 @@ export function UserMenuClient() {
     </div>
   );
 }
-

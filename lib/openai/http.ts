@@ -1,9 +1,12 @@
-import { coachFeedbackJsonSchema } from "@/lib/coach/types";
+import {
+  buildSimRoundOutputJsonSchema,
+  coachFeedbackJsonSchema,
+} from "@/lib/coach/types";
 import type { Drill } from "@/lib/content/drills";
 
 import { normalizeCoachFeedbackPayload } from "../coach/normalize";
-import { CoachFeedbackSchema } from "../coach/schema";
-import type { CoachFeedback } from "../coach/types";
+import { BuildSimRoundOutputSchema, CoachFeedbackSchema } from "../coach/schema";
+import type { BuildSimRoundOutput, CoachFeedback } from "../coach/types";
 import { extractChatCompletionsOutputText, extractOpenAIOutputText } from "./extract";
 import { getProviderPreset } from "./providers";
 
@@ -261,7 +264,7 @@ export async function createCoachFeedbackWithOpenAI(input: {
     "- 语气要鼓励式、建设性，先肯定可取之处，再指出可改进项，避免苛责语气。",
     "- 缺失项和问题建议请用“可补充/可澄清”表达，帮助用户逐步改进。",
     "- 给出可执行、具体、可验证的建议，避免空话。",
-    "- 分数含义：每个维度 0-20，总分 0-100。",
+    "- 分数含义：每个维度 0-20，维度包含 context/constraints/output_format/acceptance_criteria/tests_and_edge_cases/process_control，总分 0-120。",
   ].join("\n");
 
   const user = [
@@ -334,5 +337,99 @@ export async function createCoachFeedbackWithOpenAI(input: {
 
   const normalized = normalizeCoachFeedbackPayload(parsed);
   const validated = CoachFeedbackSchema.parse(normalized);
+  return validated;
+}
+
+export async function createBuildSimRoundOutputWithOpenAI(input: {
+  apiKey: string;
+  provider?: string;
+  baseUrl?: string;
+  model?: string;
+  drill: Drill;
+  promptText: string;
+}): Promise<BuildSimRoundOutput> {
+  const apiKey = input.apiKey.trim();
+  if (!apiKey) throw new Error("Missing OpenAI API key");
+
+  const { baseUrl, model } = normalizeProviderConfig(input);
+
+  const system = [
+    "你是 PromptSkiller 的模拟执行引擎。",
+    "任务：根据用户提示词，返回本轮“模拟构建产物”，用于训练过程评估。",
+    "仅输出 JSON，不要额外解释。",
+    "必须严格遵守 schema 字段：summary, changed_files, patch_preview, risk_notes。",
+    "changed_files 每项必须包含 path, change_type(create/update/delete), rationale。",
+    "patch_preview 使用 unified diff 风格片段，控制在最小可读范围。",
+    "risk_notes 输出可验证风险，不要空泛措辞。",
+  ].join("\n");
+
+  const user = [
+    "【训练题】",
+    `标题：${input.drill.title}`,
+    `类型：${input.drill.drillType}`,
+    "正文：",
+    input.drill.bodyMd,
+    "",
+    "【用户本轮提示词】",
+    input.promptText,
+    "",
+    "请输出本轮模拟构建结果 JSON。",
+  ].join("\n");
+
+  let outputText = "";
+
+  try {
+    const resJson = await openaiFetchJson({
+      apiKey,
+      baseUrl,
+      path: "/responses",
+      method: "POST",
+      body: {
+        model,
+        input: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: "promptskiller_build_sim_round_output",
+            strict: true,
+            schema: buildSimRoundOutputJsonSchema,
+          },
+        },
+      },
+    });
+
+    outputText = extractOpenAIOutputText(resJson);
+  } catch (e) {
+    const err = e as OpenAIHttpError;
+    if (!isEndpointUnsupported(err)) throw err;
+
+    const chatJson = await postChatCompletions({
+      apiKey,
+      baseUrl,
+      model,
+      system,
+      user,
+    });
+    outputText = extractChatCompletionsOutputText(chatJson);
+  }
+
+  let parsed = parseLikelyJsonFromText(outputText);
+
+  if (!parsed) {
+    const chatJson = await postChatCompletions({
+      apiKey,
+      baseUrl,
+      model,
+      system,
+      user,
+    });
+    const chatText = extractChatCompletionsOutputText(chatJson);
+    parsed = parseLikelyJsonFromText(chatText);
+  }
+
+  const validated = BuildSimRoundOutputSchema.parse(parsed);
   return validated;
 }

@@ -13,6 +13,7 @@ describe("normalizeCoachFeedbackPayload", () => {
         output_format: 17,
         acceptance_criteria: 16,
         tests_and_edge_cases: 17,
+        process_control: 17,
       },
       missing_items: ["补充边界条件"],
       ambiguities: ["输入范围不清晰"],
@@ -33,6 +34,7 @@ describe("normalizeCoachFeedbackPayload", () => {
         outputFormat: 16,
         acceptanceCriteria: 15,
         tests: 16,
+        processControl: 16,
       },
       feedback: ["缺少验收标准", "边界情况描述不足"],
       suggestion: ["先列清输入输出", "补充失败场景"],
@@ -56,6 +58,7 @@ describe("normalizeCoachFeedbackPayload", () => {
         format: "16",
         acceptance: "17",
         edge_cases: "17",
+        process_control: "17",
       },
       feedback: "- 缺少上下文\n- 输出格式未严格声明",
       suggestion: "请先补充环境信息；请明确验收标准",
@@ -83,7 +86,8 @@ describe("normalizeCoachFeedbackPayload", () => {
       parsed.scores.constraints +
       parsed.scores.output_format +
       parsed.scores.acceptance_criteria +
-      parsed.scores.tests_and_edge_cases;
+      parsed.scores.tests_and_edge_cases +
+      parsed.scores.process_control;
 
     expect(parsed.score_total).toBe(42);
     expect(sum).toBe(42);
@@ -98,6 +102,7 @@ describe("normalizeCoachFeedbackPayload", () => {
         输出格式: { value: 16 },
         验收标准: { rating: 15 },
         测试: { 分数: 16 },
+        流程控制: { 分数: 16 },
       },
       feedback: ["可以补充失败场景"],
       suggestion: ["可先定义输入输出契约"],
@@ -109,6 +114,7 @@ describe("normalizeCoachFeedbackPayload", () => {
 
     expect(parsed.scores.context).toBe(15);
     expect(parsed.scores.tests_and_edge_cases).toBe(16);
+    expect(parsed.scores.process_control).toBe(16);
   });
 
   it("coerces legacy malformed feedback with fallback score", () => {
@@ -124,7 +130,8 @@ describe("normalizeCoachFeedbackPayload", () => {
       parsed.scores.constraints +
       parsed.scores.output_format +
       parsed.scores.acceptance_criteria +
-      parsed.scores.tests_and_edge_cases;
+      parsed.scores.tests_and_edge_cases +
+      parsed.scores.process_control;
 
     expect(parsed.score_total).toBe(42);
     expect(sum).toBe(42);
