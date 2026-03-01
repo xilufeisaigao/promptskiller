@@ -71,5 +71,7 @@ $template = @"
 -- on conflict (date, slot) do update set drill_id = excluded.drill_id;
 "@
 
-Set-Content -Path $fullPath -Value $template -Encoding UTF8NoBOM
+# Write without BOM for cross-version PowerShell compatibility.
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($fullPath, $template, $utf8NoBom)
 Write-Host "Created $fullPath"
