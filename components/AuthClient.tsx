@@ -11,7 +11,7 @@ export function AuthClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = useMemo(
-    () => searchParams.get("redirectTo") || "/drills/today",
+    () => searchParams.get("redirectTo") || "/coach/today",
     [searchParams],
   );
 
@@ -151,4 +151,3 @@ export function AuthClient() {
     </div>
   );
 }
-

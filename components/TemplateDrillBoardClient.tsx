@@ -1,11 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import type { Drill, DrillAsset, DrillTemplateRound } from "@/lib/content/drills";
 
-type AssetTab = "prompt" | "file" | "log";
+type AssetTab = "prompt" | "file" | "log" | "image";
 
 const DRILL_TYPE_LABEL: Record<Drill["drillType"], string> = {
   prompt_case: "普通题",
@@ -41,6 +42,7 @@ export function TemplateDrillBoardClient(props: {
   const [assetTab, setAssetTab] = useState<AssetTab>("prompt");
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
 
   const fileAssets = useMemo(
     () => assets.filter((a) => a.assetKind === "file").sort((a, b) => a.orderNo - b.orderNo),
@@ -54,11 +56,17 @@ export function TemplateDrillBoardClient(props: {
     () => assets.filter((a) => a.assetKind === "spec").sort((a, b) => a.orderNo - b.orderNo),
     [assets],
   );
+  const imageAssets = useMemo(
+    () => assets.filter((a) => a.assetKind === "image").sort((a, b) => a.orderNo - b.orderNo),
+    [assets],
+  );
 
   const selectedFile =
     fileAssets.find((a) => a.id === selectedFileId) ?? fileAssets[0] ?? null;
   const selectedLog =
     logAssets.find((a) => a.id === selectedLogId) ?? logAssets[0] ?? null;
+  const selectedImage =
+    imageAssets.find((a) => a.id === selectedImageId) ?? imageAssets[0] ?? null;
 
   return (
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
@@ -92,6 +100,7 @@ export function TemplateDrillBoardClient(props: {
               ["prompt", "题面"],
               ["file", `文件(${fileAssets.length})`],
               ["log", `日志(${logAssets.length})`],
+              ["image", `图片(${imageAssets.length})`],
             ] as const).map(([key, label]) => (
               <button
                 key={key}
@@ -155,7 +164,7 @@ export function TemplateDrillBoardClient(props: {
                 </pre>
               </div>
             )
-          ) : logAssets.length === 0 ? (
+          ) : assetTab === "log" ? logAssets.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/70 bg-muted/10 p-4 text-sm text-muted-foreground">
               当前题目没有日志附件。
             </div>
@@ -183,6 +192,52 @@ export function TemplateDrillBoardClient(props: {
                 {selectedLog?.contentText ?? ""}
               </pre>
             </div>
+          ) : imageAssets.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/70 bg-muted/10 p-4 text-sm text-muted-foreground">
+              当前题目没有图片附件。
+            </div>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+              <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">
+                {imageAssets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => setSelectedImageId(asset.id)}
+                    className={[
+                      "rounded-2xl border px-3 py-2 text-left text-xs transition-colors",
+                      selectedImage?.id === asset.id
+                        ? "border-foreground bg-muted/30 text-foreground"
+                        : "border-border/60 bg-background text-muted-foreground hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    <p className="truncate font-medium">{asset.path}</p>
+                    <p className="mt-1 text-[11px]">排序 {asset.orderNo}</p>
+                  </button>
+                ))}
+              </div>
+              {(() => {
+                if (!selectedImage) return null;
+                const rawSrc = (selectedImage.contentText || "").trim() || selectedImage.path;
+                const src =
+                  /^https?:\/\//.test(rawSrc) || rawSrc.startsWith("/")
+                    ? rawSrc
+                    : `/${rawSrc.replace(/^\/+/, "")}`;
+                return (
+                  <div className="rounded-2xl border border-border/60 bg-muted/20 p-3">
+                    <Image
+                      src={src}
+                      alt={selectedImage.path}
+                      width={1600}
+                      height={900}
+                      unoptimized
+                      className="max-h-[24rem] w-full rounded-xl border border-border/40 object-contain bg-background"
+                    />
+                    <p className="mt-2 text-xs text-muted-foreground">{selectedImage.path}</p>
+                  </div>
+                );
+              })()}
+            </div>
           )}
         </div>
       </section>
@@ -195,13 +250,13 @@ export function TemplateDrillBoardClient(props: {
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Link
-              href="/drills"
+              href="/coach"
               className="rounded-full border border-border/70 bg-background px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
             >
               返回题库
             </Link>
             <Link
-              href="/drills/today"
+              href="/coach/today"
               className="rounded-full border border-border/70 bg-background px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
             >
               查看今日题

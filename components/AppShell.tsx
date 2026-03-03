@@ -17,16 +17,22 @@ export function AppShell(props: { children: React.ReactNode }) {
           </Link>
           <nav className="flex items-center gap-4 text-sm">
             <Link
-              href="/drills/today"
+              href="/coach/today"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              今日训练
+              教练训练
             </Link>
             <Link
-              href="/drills"
+              href="/coach"
               className="text-muted-foreground hover:text-foreground transition-colors"
             >
-              题库
+              教练题库
+            </Link>
+            <Link
+              href="/exam"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+            >
+              考试模式
             </Link>
             <Link
               href="/challenges"

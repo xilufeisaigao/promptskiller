@@ -4,9 +4,10 @@ import { listDrillModules, listDrills } from "@/lib/content/drills-source";
 export const dynamic = "force-dynamic";
 
 export default async function DrillLibraryPage(props: {
-  searchParams: Promise<{ view?: string; module?: string }>;
+  searchParams: Promise<{ view?: string; module?: string; mode?: string }>;
 }) {
   const searchParams = await props.searchParams;
+  const mode = searchParams.mode === "exam" ? "exam" : "coach";
   const drills = await listDrills();
   const modules = await listDrillModules();
   const recentSince = new Date();
@@ -19,6 +20,7 @@ export default async function DrillLibraryPage(props: {
       recentSinceIso={recentSinceIso}
       initialView={searchParams.view === "modules" ? "modules" : "library"}
       initialModuleSlug={(searchParams.module || "").trim()}
+      initialMode={mode}
     />
   );
 }

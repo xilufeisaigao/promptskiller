@@ -12,10 +12,14 @@ export const dynamic = "force-dynamic";
 
 export default async function DrillByIdPage(props: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ mode?: string }>;
 }) {
   const { id } = await props.params;
+  const searchParams = await props.searchParams;
+  const mode = searchParams.mode === "exam" ? "exam" : "coach";
   const drill = await getDrillById(id);
   if (!drill) notFound();
+  if (!drill.modeVisibility.includes(mode)) notFound();
   const assets = await listDrillAssets(id);
   const templateRounds =
     drill.drillType === "template_case"
@@ -32,5 +36,5 @@ export default async function DrillByIdPage(props: {
     );
   }
 
-  return <DrillPracticeClient drill={drill} assets={assets} />;
+  return <DrillPracticeClient drill={drill} assets={assets} sessionMode={mode} />;
 }

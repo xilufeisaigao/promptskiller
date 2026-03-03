@@ -17,6 +17,7 @@ type SortMode =
   | "difficulty_asc";
 
 type LibraryView = "library" | "modules";
+type DrillMode = "coach" | "exam";
 type PracticeState = "all" | "attempted" | "unattempted";
 type ExploreMode = "type" | "tag";
 type ProgressRow = { drill_id: string; attempt_count: number };
@@ -35,6 +36,14 @@ type TagStat = {
   tag: string;
   total: number;
   recent: number;
+};
+type DomainMeta = {
+  domain: Drill["capabilityDomain"];
+  label: string;
+};
+type ExamTrackMeta = {
+  track: NonNullable<Drill["examTrack"]>;
+  label: string;
 };
 
 const DRILL_TYPE_META: Array<{
@@ -63,6 +72,17 @@ const DRILL_TYPE_META: Array<{
     hint: "固定示例轮次，用于教学演示。",
   },
 ];
+const CAPABILITY_DOMAIN_META: DomainMeta[] = [
+  { domain: "coding", label: "编程" },
+  { domain: "docs", label: "文档" },
+  { domain: "tools", label: "工具/自动化" },
+  { domain: "life", label: "生活任务" },
+];
+const EXAM_TRACK_META: ExamTrackMeta[] = [
+  { track: "debug", label: "Debug" },
+  { track: "feature", label: "新增需求" },
+  { track: "from_zero", label: "从 0 构建" },
+];
 
 const DIFFICULTY_LEVELS: Array<1 | 2 | 3 | 4 | 5> = [1, 2, 3, 4, 5];
 
@@ -81,6 +101,10 @@ function typeLabel(type: Drill["drillType"]): string {
   if (type === "build_sim_case") return "模拟构建题";
   if (type === "template_case") return "教学样板题";
   return "普通题";
+}
+
+function modeLabel(mode: DrillMode): string {
+  return mode === "exam" ? "考试模式" : "教练模式";
 }
 
 function levelLabel(level: DrillModule["level"]): string {
@@ -122,6 +146,7 @@ export function DrillLibraryClient(props: {
   recentSinceIso: string;
   initialView?: LibraryView;
   initialModuleSlug?: string;
+  initialMode?: DrillMode;
 }) {
   const [query, setQuery] = useState("");
   const [sortMode, setSortMode] = useState<SortMode>("display_no");
@@ -130,10 +155,17 @@ export function DrillLibraryClient(props: {
   const [selectedDifficulties, setSelectedDifficulties] = useState<Array<1 | 2 | 3 | 4 | 5>>(
     [],
   );
+  const [selectedDomains, setSelectedDomains] = useState<Drill["capabilityDomain"][]>([]);
+  const [selectedExamTracks, setSelectedExamTracks] = useState<
+    Array<NonNullable<Drill["examTrack"]>>
+  >([]);
+  const [onlyTimedExam, setOnlyTimedExam] = useState(false);
+  const [onlyLimitedExam, setOnlyLimitedExam] = useState(false);
   const [practiceState, setPracticeState] = useState<PracticeState>("all");
   const [onlyRecent, setOnlyRecent] = useState(false);
   const [moduleLevel, setModuleLevel] = useState<DrillModule["level"] | "all">("all");
   const [exploreMode, setExploreMode] = useState<ExploreMode>("type");
+  const mode: DrillMode = props.initialMode ?? "coach";
   const [view, setView] = useState<LibraryView>(props.initialView ?? "library");
   const [selectedModuleSlug, setSelectedModuleSlug] = useState(
     props.initialModuleSlug ?? "",
@@ -148,6 +180,25 @@ export function DrillLibraryClient(props: {
   const recentSinceMs = useMemo(
     () => parseTimeMs(props.recentSinceIso),
     [props.recentSinceIso],
+  );
+  const drillTypeMeta = useMemo(
+    () => (mode === "exam" ? DRILL_TYPE_META.filter((meta) => meta.type !== "template_case") : DRILL_TYPE_META),
+    [mode],
+  );
+  const modeVisibleDrills = useMemo(
+    () => props.drills.filter((drill) => drill.modeVisibility.includes(mode)),
+    [props.drills, mode],
+  );
+  const selectedTypesForMode = useMemo(
+    () =>
+      mode === "exam"
+        ? selectedTypes.filter((type) => type !== "template_case")
+        : selectedTypes,
+    [mode, selectedTypes],
+  );
+  const modeVisibleDrillIdSet = useMemo(
+    () => new Set(modeVisibleDrills.map((drill) => drill.id)),
+    [modeVisibleDrills],
   );
 
   useEffect(() => {
@@ -227,6 +278,10 @@ export function DrillLibraryClient(props: {
     () => new Set(Object.keys(progressByDrill).filter((id) => (progressByDrill[id] ?? 0) > 0)),
     [progressByDrill],
   );
+  const practicedVisibleCount = useMemo(
+    () => modeVisibleDrills.filter((drill) => practicedSet.has(drill.id)).length,
+    [modeVisibleDrills, practicedSet],
+  );
 
   const modulesBySlug = useMemo(
     () => new Map(props.modules.map((module) => [module.slug, module])),
@@ -234,7 +289,9 @@ export function DrillLibraryClient(props: {
   );
 
   const effectiveModuleSlug =
-    selectedModuleSlug && modulesBySlug.has(selectedModuleSlug)
+    selectedModuleSlug &&
+    modulesBySlug.has(selectedModuleSlug) &&
+    (modulesBySlug.get(selectedModuleSlug)?.drillIds.some((id) => modeVisibleDrillIdSet.has(id)) ?? false)
       ? selectedModuleSlug
       : "";
 
@@ -245,54 +302,62 @@ export function DrillLibraryClient(props: {
   const moduleProgress = useMemo(() => {
     const out = new Map<string, { total: number; practiced: number }>();
     for (const moduleItem of props.modules) {
-      const total = moduleItem.drillIds.length;
-      const practiced = moduleItem.drillIds.filter((id) => practicedSet.has(id)).length;
+      const visibleIds = moduleItem.drillIds.filter((id) => modeVisibleDrillIdSet.has(id));
+      const total = visibleIds.length;
+      const practiced = visibleIds.filter((id) => practicedSet.has(id)).length;
       out.set(moduleItem.id, { total, practiced });
     }
     return out;
-  }, [props.modules, practicedSet]);
+  }, [props.modules, practicedSet, modeVisibleDrillIdSet]);
 
   const moduleLevelStats = useMemo(() => {
     const out = {
-      all: props.modules.length,
+      all: 0,
       starter: 0,
       intermediate: 0,
       advanced: 0,
     };
     for (const moduleItem of props.modules) {
+      const visibleCount = moduleItem.drillIds.filter((id) => modeVisibleDrillIdSet.has(id)).length;
+      if (visibleCount === 0) continue;
+      out.all += 1;
       out[moduleItem.level] += 1;
     }
     return out;
-  }, [props.modules]);
+  }, [props.modules, modeVisibleDrillIdSet]);
 
   const visibleModules = useMemo(() => {
-    if (moduleLevel === "all") return props.modules;
-    return props.modules.filter((moduleItem) => moduleItem.level === moduleLevel);
-  }, [props.modules, moduleLevel]);
+    const byMode = props.modules.filter((moduleItem) =>
+      moduleItem.drillIds.some((id) => modeVisibleDrillIdSet.has(id)),
+    );
+    if (moduleLevel === "all") return byMode;
+    return byMode.filter((moduleItem) => moduleItem.level === moduleLevel);
+  }, [props.modules, moduleLevel, modeVisibleDrillIdSet]);
 
   const drillById = useMemo(
-    () => new Map(props.drills.map((drill) => [drill.id, drill])),
-    [props.drills],
+    () => new Map(modeVisibleDrills.map((drill) => [drill.id, drill])),
+    [modeVisibleDrills],
   );
 
   const moduleDrillIdSet = useMemo(() => {
     if (!selectedModule) return null;
-    return new Set(selectedModule.drillIds);
-  }, [selectedModule]);
+    return new Set(selectedModule.drillIds.filter((id) => modeVisibleDrillIdSet.has(id)));
+  }, [selectedModule, modeVisibleDrillIdSet]);
 
   const drillToModuleMap = useMemo(() => {
     const out = new Map<string, string>();
     for (const moduleItem of props.modules) {
       for (const drillId of moduleItem.drillIds) {
+        if (!modeVisibleDrillIdSet.has(drillId)) continue;
         if (!out.has(drillId)) out.set(drillId, moduleItem.title);
       }
     }
     return out;
-  }, [props.modules]);
+  }, [props.modules, modeVisibleDrillIdSet]);
 
   const typeStats = useMemo(() => {
     const bucket = new Map<Drill["drillType"], DrillTypeStat>();
-    for (const meta of DRILL_TYPE_META) {
+    for (const meta of drillTypeMeta) {
       bucket.set(meta.type, {
         type: meta.type,
         total: 0,
@@ -301,7 +366,7 @@ export function DrillLibraryClient(props: {
       });
     }
 
-    for (const drill of props.drills) {
+    for (const drill of modeVisibleDrills) {
       const cell = bucket.get(drill.drillType);
       if (!cell) continue;
       cell.total += 1;
@@ -309,26 +374,43 @@ export function DrillLibraryClient(props: {
       if (isRecentDrill(drill, recentSinceMs)) cell.recent += 1;
     }
 
-    return DRILL_TYPE_META.map((meta) => bucket.get(meta.type)!);
-  }, [props.drills, practicedSet, recentSinceMs]);
+    return drillTypeMeta.map((meta) => bucket.get(meta.type)!);
+  }, [drillTypeMeta, modeVisibleDrills, practicedSet, recentSinceMs]);
 
   const difficultyStats = useMemo(() => {
     const bucket = new Map<1 | 2 | 3 | 4 | 5, DifficultyStat>();
     for (const level of DIFFICULTY_LEVELS) {
       bucket.set(level, { difficulty: level, total: 0, practiced: 0 });
     }
-    for (const drill of props.drills) {
+    for (const drill of modeVisibleDrills) {
       const cell = bucket.get(drill.difficulty);
       if (!cell) continue;
       cell.total += 1;
       if (practicedSet.has(drill.id)) cell.practiced += 1;
     }
     return DIFFICULTY_LEVELS.map((level) => bucket.get(level)!);
-  }, [props.drills, practicedSet]);
+  }, [modeVisibleDrills, practicedSet]);
+  const domainCounts = useMemo(() => {
+    const out = new Map<Drill["capabilityDomain"], number>();
+    for (const meta of CAPABILITY_DOMAIN_META) out.set(meta.domain, 0);
+    for (const drill of modeVisibleDrills) {
+      out.set(drill.capabilityDomain, (out.get(drill.capabilityDomain) ?? 0) + 1);
+    }
+    return out;
+  }, [modeVisibleDrills]);
+  const examTrackCounts = useMemo(() => {
+    const out = new Map<NonNullable<Drill["examTrack"]>, number>();
+    for (const meta of EXAM_TRACK_META) out.set(meta.track, 0);
+    for (const drill of modeVisibleDrills) {
+      if (!drill.examTrack) continue;
+      out.set(drill.examTrack, (out.get(drill.examTrack) ?? 0) + 1);
+    }
+    return out;
+  }, [modeVisibleDrills]);
 
   const tagStats = useMemo(() => {
     const bucket = new Map<string, TagStat>();
-    for (const drill of props.drills) {
+    for (const drill of modeVisibleDrills) {
       for (const rawTag of drill.tags ?? []) {
         const tag = rawTag.trim().toLowerCase();
         if (!tag) continue;
@@ -346,10 +428,10 @@ export function DrillLibraryClient(props: {
       if (b.recent !== a.recent) return b.recent - a.recent;
       return a.tag.localeCompare(b.tag);
     });
-  }, [props.drills, recentSinceMs]);
+  }, [modeVisibleDrills, recentSinceMs]);
 
   const filtered = useMemo(() => {
-    const withQuery = props.drills.filter((drill) => {
+    const withQuery = modeVisibleDrills.filter((drill) => {
       if (moduleDrillIdSet && !moduleDrillIdSet.has(drill.id)) {
         return false;
       }
@@ -367,7 +449,10 @@ export function DrillLibraryClient(props: {
 
       if (!queryMatched) return false;
 
-      if (selectedTypes.length > 0 && !selectedTypes.includes(drill.drillType)) {
+      if (
+        selectedTypesForMode.length > 0 &&
+        !selectedTypesForMode.includes(drill.drillType)
+      ) {
         return false;
       }
 
@@ -382,6 +467,26 @@ export function DrillLibraryClient(props: {
         const tagSet = new Set((drill.tags ?? []).map((x) => x.toLowerCase()));
         const containsAll = selectedTags.every((tag) => tagSet.has(tag));
         if (!containsAll) return false;
+      }
+
+       if (mode === "coach" && selectedDomains.length > 0) {
+         if (!selectedDomains.includes(drill.capabilityDomain)) {
+           return false;
+         }
+       }
+
+      if (mode === "exam" && selectedExamTracks.length > 0) {
+        if (!drill.examTrack || !selectedExamTracks.includes(drill.examTrack)) {
+          return false;
+        }
+      }
+
+      if (mode === "exam" && onlyTimedExam && !drill.examTimeLimitSec) {
+        return false;
+      }
+
+      if (mode === "exam" && onlyLimitedExam && !drill.examSubmissionLimit) {
+        return false;
       }
 
       const hasPractice = practicedSet.has(drill.id);
@@ -429,11 +534,16 @@ export function DrillLibraryClient(props: {
 
     return sorted;
   }, [
-    props.drills,
+    modeVisibleDrills,
     q,
-    selectedTypes,
+    selectedTypesForMode,
     selectedDifficulties,
     selectedTags,
+    selectedDomains,
+    selectedExamTracks,
+    onlyTimedExam,
+    onlyLimitedExam,
+    mode,
     practiceState,
     practicedSet,
     onlyRecent,
@@ -443,8 +553,8 @@ export function DrillLibraryClient(props: {
   ]);
 
   const recentCount = useMemo(
-    () => props.drills.filter((drill) => isRecentDrill(drill, recentSinceMs)).length,
-    [props.drills, recentSinceMs],
+    () => modeVisibleDrills.filter((drill) => isRecentDrill(drill, recentSinceMs)).length,
+    [modeVisibleDrills, recentSinceMs],
   );
 
   const selectedModuleDrills = useMemo(() => {
@@ -469,8 +579,12 @@ export function DrillLibraryClient(props: {
   const activeFilterCount =
     (q ? 1 : 0) +
     selectedTags.length +
-    selectedTypes.length +
+    selectedTypesForMode.length +
     selectedDifficulties.length +
+    selectedDomains.length +
+    selectedExamTracks.length +
+    (onlyTimedExam ? 1 : 0) +
+    (onlyLimitedExam ? 1 : 0) +
     (practiceState === "all" ? 0 : 1) +
     (onlyRecent ? 1 : 0) +
     (selectedModuleSlug ? 1 : 0) +
@@ -483,6 +597,9 @@ export function DrillLibraryClient(props: {
   }
 
   function toggleType(type: Drill["drillType"]) {
+    if (mode === "exam" && type === "template_case") {
+      return;
+    }
     setSelectedTypes((prev) =>
       prev.includes(type) ? prev.filter((x) => x !== type) : [...prev, type],
     );
@@ -494,11 +611,27 @@ export function DrillLibraryClient(props: {
     );
   }
 
+  function toggleDomain(domain: Drill["capabilityDomain"]) {
+    setSelectedDomains((prev) =>
+      prev.includes(domain) ? prev.filter((x) => x !== domain) : [...prev, domain],
+    );
+  }
+
+  function toggleExamTrack(track: NonNullable<Drill["examTrack"]>) {
+    setSelectedExamTracks((prev) =>
+      prev.includes(track) ? prev.filter((x) => x !== track) : [...prev, track],
+    );
+  }
+
   function clearFilters() {
     setQuery("");
     setSelectedTags([]);
     setSelectedTypes([]);
     setSelectedDifficulties([]);
+    setSelectedDomains([]);
+    setSelectedExamTracks([]);
+    setOnlyTimedExam(false);
+    setOnlyLimitedExam(false);
     setPracticeState("all");
     setSortMode("display_no");
     setOnlyRecent(false);
@@ -519,17 +652,17 @@ export function DrillLibraryClient(props: {
               训练题库
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
-              支持题库筛选与模块学习路径两种视图。先筛选，再训练，形成可持续迭代节奏。
+              当前为{modeLabel(mode)}。支持题库筛选与模块学习路径两种视图，先筛选再训练。
             </p>
             <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-muted-foreground">
-                总题数 {props.drills.length}
+                总题数 {modeVisibleDrills.length}
               </span>
               <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-muted-foreground">
                 新题（{NEW_DAYS} 天内）{recentCount}
               </span>
               <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1 text-muted-foreground">
-                模块 {props.modules.length}
+                模块 {moduleLevelStats.all}
               </span>
             </div>
           </div>
@@ -551,7 +684,7 @@ export function DrillLibraryClient(props: {
                 打开模块视图
               </button>
               <Link
-                href={selectedModule ? `/drills?view=library&module=${selectedModule.slug}` : "/drills"}
+                href={selectedModule ? `/drills?mode=${mode}&view=library&module=${selectedModule.slug}` : `/drills?mode=${mode}`}
                 className="inline-flex rounded-full border border-border/70 bg-background px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
               >
                 切回题库视图
@@ -563,6 +696,44 @@ export function DrillLibraryClient(props: {
 
       <section className="rounded-3xl border border-border/60 bg-background p-5 sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 rounded-full border border-border/70 bg-muted/20 p-1">
+            <Link
+              href="/drills?mode=coach"
+              onClick={() => {
+                setSelectedModuleSlug("");
+                setSelectedExamTracks([]);
+                setOnlyTimedExam(false);
+                setOnlyLimitedExam(false);
+              }}
+              className={[
+                "rounded-full px-3 py-1.5 text-xs transition-colors",
+                mode === "coach"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+            >
+              教练模式
+            </Link>
+            <Link
+              href="/drills?mode=exam"
+              onClick={() => {
+                setSelectedModuleSlug("");
+                setSelectedTypes((prev) =>
+                  prev.filter((type) => type !== "template_case"),
+                );
+                setSelectedDomains([]);
+              }}
+              className={[
+                "rounded-full px-3 py-1.5 text-xs transition-colors",
+                mode === "exam"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground",
+              ].join(" ")}
+            >
+              考试模式
+            </Link>
+          </div>
+
           <div className="flex items-center gap-2 rounded-full border border-border/70 bg-muted/20 p-1">
             <button
               type="button"
@@ -721,7 +892,7 @@ export function DrillLibraryClient(props: {
                 <h3 className="mt-1 text-lg font-semibold tracking-tight">{selectedModule.title}</h3>
               </div>
               <Link
-                href={`/drills?module=${selectedModule.slug}`}
+                href={`/drills?mode=${mode}&module=${selectedModule.slug}`}
                 className="rounded-full border border-border/70 bg-background px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
               >
                 在题库中按此模块筛选
@@ -746,7 +917,7 @@ export function DrillLibraryClient(props: {
                         {practiced ? `已练 ${attemptCount} 次` : "未练"}
                       </span>
                       <Link
-                        href={`/drills/${drill.id}`}
+                        href={`/drills/${drill.id}?mode=${mode}`}
                         className="inline-flex h-8 items-center justify-center rounded-full bg-foreground px-3 text-xs font-medium text-background"
                       >
                         开始
@@ -790,7 +961,7 @@ export function DrillLibraryClient(props: {
                       : "border-border/70 bg-background text-muted-foreground hover:text-foreground",
                   ].join(" ")}
                 >
-                  已练 {practicedSet.size}
+                  已练 {practicedVisibleCount}
                 </button>
                 <button
                   type="button"
@@ -802,7 +973,7 @@ export function DrillLibraryClient(props: {
                       : "border-border/70 bg-background text-muted-foreground hover:text-foreground",
                   ].join(" ")}
                 >
-                  未练 {Math.max(0, props.drills.length - practicedSet.size)}
+                  未练 {Math.max(0, modeVisibleDrills.length - practicedVisibleCount)}
                 </button>
               </div>
             </div>
@@ -835,13 +1006,89 @@ export function DrillLibraryClient(props: {
               </div>
             </div>
 
+            {mode === "coach" ? (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted-foreground">
+                  能力领域
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  {CAPABILITY_DOMAIN_META.map((item) => {
+                    const active = selectedDomains.includes(item.domain);
+                    return (
+                      <button
+                        key={item.domain}
+                        type="button"
+                        onClick={() => toggleDomain(item.domain)}
+                        className={[
+                          "rounded-xl border px-2 py-2 transition-colors",
+                          active
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border/70 bg-background text-muted-foreground hover:text-foreground",
+                        ].join(" ")}
+                      >
+                        {item.label}
+                        <span className="ml-1 opacity-70">({domainCounts.get(item.domain) ?? 0})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-xs font-medium tracking-wide text-muted-foreground">
+                  考试赛道
+                </p>
+                <div className="mt-2 grid gap-2 text-xs">
+                  {EXAM_TRACK_META.map((item) => {
+                    const active = selectedExamTracks.includes(item.track);
+                    return (
+                      <button
+                        key={item.track}
+                        type="button"
+                        onClick={() => toggleExamTrack(item.track)}
+                        className={[
+                          "flex items-center justify-between rounded-xl border px-3 py-2 text-left transition-colors",
+                          active
+                            ? "border-foreground bg-foreground text-background"
+                            : "border-border/70 bg-background text-muted-foreground hover:text-foreground",
+                        ].join(" ")}
+                      >
+                        <span>{item.label}</span>
+                        <span className="opacity-80">{examTrackCounts.get(item.track) ?? 0}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 grid gap-2 text-xs">
+                  <label className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={onlyTimedExam}
+                      onChange={(e) => setOnlyTimedExam(e.target.checked)}
+                      className="size-4 rounded border-border/70"
+                    />
+                    <span>仅看限时题</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={onlyLimitedExam}
+                      onChange={(e) => setOnlyLimitedExam(e.target.checked)}
+                      className="size-4 rounded border-border/70"
+                    />
+                    <span>仅看限次题</span>
+                  </label>
+                </div>
+              </div>
+            )}
+
             <div>
               <p className="text-xs font-medium tracking-wide text-muted-foreground">
                 题型分层
               </p>
               <div className="mt-2 grid gap-2">
-                {DRILL_TYPE_META.map((meta) => {
-                  const active = selectedTypes.includes(meta.type);
+                {drillTypeMeta.map((meta) => {
+                  const active = selectedTypesForMode.includes(meta.type);
                   const stat = typeStatsByType.get(meta.type);
                   return (
                     <button
@@ -910,9 +1157,9 @@ export function DrillLibraryClient(props: {
 
             {exploreMode === "type" ? (
               <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {DRILL_TYPE_META.map((meta) => {
+                {drillTypeMeta.map((meta) => {
                   const stat = typeStatsByType.get(meta.type);
-                  const active = selectedTypes.includes(meta.type);
+                  const active = selectedTypesForMode.includes(meta.type);
                   return (
                     <button
                       key={meta.type}
@@ -1063,8 +1310,12 @@ export function DrillLibraryClient(props: {
             <span>结果 {filtered.length}</span>
             {(q ||
               selectedTags.length > 0 ||
-              selectedTypes.length > 0 ||
+              selectedTypesForMode.length > 0 ||
               selectedDifficulties.length > 0 ||
+              selectedDomains.length > 0 ||
+              selectedExamTracks.length > 0 ||
+              onlyTimedExam ||
+              onlyLimitedExam ||
               practiceState !== "all" ||
               onlyRecent ||
               sortMode !== "display_no" ||
@@ -1159,13 +1410,13 @@ export function DrillLibraryClient(props: {
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <Link
-                    href={`/drills/${drill.id}`}
+                    href={`/drills/${drill.id}?mode=${mode}`}
                     className="inline-flex h-9 items-center justify-center rounded-full bg-foreground px-4 text-sm font-medium text-background"
                   >
                     开始训练
                   </Link>
                   <Link
-                    href={`/drills/today?id=${encodeURIComponent(drill.id)}`}
+                    href={`/drills/today?mode=${mode}&id=${encodeURIComponent(drill.id)}`}
                     className="inline-flex h-9 items-center justify-center rounded-full border border-border/70 bg-background px-4 text-sm font-medium text-foreground"
                   >
                     放到今日面板

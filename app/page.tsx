@@ -67,16 +67,22 @@ export default async function HomePage() {
 
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <Link
-                href="/drills/today"
+                href="/coach/today"
                 className="inline-flex h-11 items-center justify-center rounded-full bg-foreground px-6 text-sm font-medium text-background shadow-[0_10px_30px_-18px_rgba(0,0,0,0.45)] transition-transform hover:-translate-y-0.5"
               >
-                开始今日训练
+                教练模式开始训练
               </Link>
               <Link
-                href="/drills"
+                href="/coach"
                 className="inline-flex h-11 items-center justify-center rounded-full border border-border/80 bg-background/85 px-6 text-sm font-medium text-foreground shadow-sm transition-transform hover:-translate-y-0.5"
               >
-                浏览题库
+                教练模式题库
+              </Link>
+              <Link
+                href="/exam"
+                className="inline-flex h-11 items-center justify-center rounded-full border border-border/80 bg-background/85 px-6 text-sm font-medium text-foreground shadow-sm transition-transform hover:-translate-y-0.5"
+              >
+                进入考试模式
               </Link>
               <Link
                 href="/challenges"
@@ -137,7 +143,7 @@ export default async function HomePage() {
             </h2>
           </div>
           <Link
-            href="/drills/today"
+            href="/coach/today"
             className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
           >
             进入今日训练
@@ -171,7 +177,7 @@ export default async function HomePage() {
             </h2>
           </div>
           <Link
-            href="/drills?view=modules"
+            href="/drills?mode=coach&view=modules"
             className="rounded-full border border-border/70 bg-background px-3 py-1 text-[11px] text-muted-foreground hover:text-foreground"
           >
             打开模块视图
@@ -198,7 +204,7 @@ export default async function HomePage() {
 
       <section className="grid gap-4 lg:grid-cols-3">
         <Link
-          href="/drills/today"
+          href="/coach/today"
           className="group rounded-3xl border border-border/60 bg-background p-5 transition-transform hover:-translate-y-0.5"
         >
           <p className="text-xs font-medium tracking-wide text-muted-foreground">
@@ -214,7 +220,7 @@ export default async function HomePage() {
         </Link>
 
         <Link
-          href="/drills"
+          href="/coach"
           className="group rounded-3xl border border-border/60 bg-background p-5 transition-transform hover:-translate-y-0.5"
         >
           <p className="text-xs font-medium tracking-wide text-muted-foreground">

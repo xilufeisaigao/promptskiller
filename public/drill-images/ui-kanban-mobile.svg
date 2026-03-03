@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1280" viewBox="0 0 720 1280">
+  <rect width="720" height="1280" fill="#f7fafc"/>
+  <rect x="30" y="24" width="660" height="84" rx="18" fill="#111827"/>
+  <text x="52" y="78" font-size="34" fill="#fff" font-family="Arial">Task Board · Mobile</text>
+  <rect x="30" y="140" width="660" height="330" rx="14" fill="#e6eefc"/>
+  <rect x="30" y="490" width="660" height="330" rx="14" fill="#e8f8ef"/>
+  <rect x="30" y="840" width="660" height="330" rx="14" fill="#fff4e6"/>
+  <text x="56" y="190" font-size="28" fill="#1e3a8a" font-family="Arial">Todo</text>
+  <text x="56" y="540" font-size="28" fill="#166534" font-family="Arial">Doing</text>
+  <text x="56" y="890" font-size="28" fill="#9a3412" font-family="Arial">Done</text>
+  <rect x="56" y="214" width="608" height="84" rx="10" fill="#fff"/>
+  <rect x="56" y="564" width="608" height="84" rx="10" fill="#fff"/>
+  <rect x="56" y="914" width="608" height="84" rx="10" fill="#fff"/>
+</svg>

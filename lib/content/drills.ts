@@ -5,13 +5,21 @@ export type Drill = {
   bodyMd: string;
   difficulty: 1 | 2 | 3 | 4 | 5;
   drillType: DrillType;
+  modeVisibility: DrillMode[];
+  capabilityDomain: DrillCapabilityDomain;
+  examTrack: DrillExamTrack | null;
+  examTimeLimitSec: number | null;
+  examSubmissionLimit: number | null;
   tags?: string[];
   publishedAt?: string | null;
 };
 
 export type DrillType = "prompt_case" | "code_case_multi" | "build_sim_case" | "template_case";
+export type DrillMode = "coach" | "exam";
+export type DrillCapabilityDomain = "coding" | "docs" | "tools" | "life";
+export type DrillExamTrack = "debug" | "feature" | "from_zero";
 
-export type DrillAssetKind = "file" | "log" | "spec";
+export type DrillAssetKind = "file" | "log" | "spec" | "image";
 
 export type DrillAsset = {
   id: string;
@@ -53,6 +61,11 @@ export const DRILLS: Drill[] = [
     title: "把 Bug 描述成可复现的最小问题",
     difficulty: 2,
     drillType: "prompt_case",
+    modeVisibility: ["coach", "exam"],
+    capabilityDomain: "coding",
+    examTrack: "debug",
+    examTimeLimitSec: null,
+    examSubmissionLimit: null,
     tags: ["debug", "communication"],
     bodyMd: [
       "你遇到一个 bug：某个表单提交后页面偶尔会卡死，刷新才恢复。",
@@ -73,6 +86,11 @@ export const DRILLS: Drill[] = [
     title: "让 AI 写测试之前先把验收标准讲清楚",
     difficulty: 3,
     drillType: "prompt_case",
+    modeVisibility: ["coach"],
+    capabilityDomain: "coding",
+    examTrack: null,
+    examTimeLimitSec: null,
+    examSubmissionLimit: null,
     tags: ["testing", "spec"],
     bodyMd: [
       "场景：你有一个函数 `parsePrice(input: string)`，输入类似 '12.30' 或 '$12.30'，输出 number。",
@@ -93,6 +111,11 @@ export const DRILLS: Drill[] = [
     title: "要求重构但保持行为不变（并给出验证方式）",
     difficulty: 4,
     drillType: "prompt_case",
+    modeVisibility: ["coach", "exam"],
+    capabilityDomain: "coding",
+    examTrack: "feature",
+    examTimeLimitSec: null,
+    examSubmissionLimit: null,
     tags: ["refactor", "quality"],
     bodyMd: [
       "场景：你有一段“能跑但很丑”的业务逻辑代码，你希望 AI 帮你重构，让它：",
@@ -115,6 +138,11 @@ export const DRILLS: Drill[] = [
     title: "设计一个 API：把需求拆成接口 + 数据结构",
     difficulty: 4,
     drillType: "prompt_case",
+    modeVisibility: ["coach", "exam"],
+    capabilityDomain: "coding",
+    examTrack: "feature",
+    examTimeLimitSec: null,
+    examSubmissionLimit: null,
     tags: ["api", "design"],
     bodyMd: [
       "场景：你要做一个“每日训练题”功能，需要：",
@@ -135,6 +163,11 @@ export const DRILLS: Drill[] = [
     title: "把“我要一个页面”讲成可验收的任务",
     difficulty: 2,
     drillType: "prompt_case",
+    modeVisibility: ["coach"],
+    capabilityDomain: "coding",
+    examTrack: null,
+    examTimeLimitSec: null,
+    examSubmissionLimit: null,
     tags: ["frontend", "spec"],
     bodyMd: [
       "场景：你要让 AI 帮你做一个简单页面，但你发现你经常只说“做个页面”，结果越做越偏。",

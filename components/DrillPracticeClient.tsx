@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -20,7 +21,13 @@ type CoachApiOk = { ok: true; result: CoachResult };
 type CoachApiErr = { ok: false; reason: string; detail?: string };
 type FeedbackMode = "guided" | "final_only";
 type SessionStatus = "in_progress" | "completed";
-type AssetTab = "prompt" | "file" | "log";
+type SessionMode = "coach" | "exam";
+type AssetTab = "prompt" | "file" | "log" | "image";
+type ExamPolicy = {
+  timeLimitSec: number | null;
+  submissionLimit: number | null;
+  startedAtIso: string | null;
+};
 
 type FinalReport = {
   round_count: number;
@@ -33,8 +40,11 @@ type FinalReport = {
 
 type SessionVM = {
   id: string;
+  sessionMode: SessionMode;
   feedbackMode: FeedbackMode;
   status: SessionStatus;
+  createdAt: string;
+  examPolicy: ExamPolicy | null;
   finalReport: FinalReport | null;
 };
 
@@ -56,8 +66,11 @@ type AttemptVM = {
 
 type SessionRow = {
   id: string;
+  session_mode: string;
   feedback_mode: string;
   status: string;
+  created_at: string;
+  exam_policy_json: unknown;
   final_report_json: unknown;
 };
 
@@ -96,8 +109,73 @@ function parseStatus(value: unknown): SessionStatus {
   return value === "completed" ? "completed" : "in_progress";
 }
 
+function parseSessionMode(value: unknown): SessionMode {
+  return value === "exam" ? "exam" : "coach";
+}
+
 function parseCoachMode(value: unknown): CoachMode {
   return value === "openai" ? "openai" : "mock";
+}
+
+function parsePositiveInt(value: unknown): number | null {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n);
+}
+
+function parseIsoDate(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const ms = new Date(value).getTime();
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
+
+function parseExamPolicy(value: unknown): ExamPolicy | null {
+  const row = asRecord(value);
+  if (!row) return null;
+
+  const timeLimitSec = parsePositiveInt(row.time_limit_sec ?? row.timeLimitSec);
+  const submissionLimit = parsePositiveInt(
+    row.submission_limit ?? row.submissionLimit,
+  );
+  const startedAtIso = parseIsoDate(row.started_at ?? row.startedAt);
+
+  if (!timeLimitSec && !submissionLimit && !startedAtIso) return null;
+  return {
+    timeLimitSec,
+    submissionLimit,
+    startedAtIso,
+  };
+}
+
+function examPolicyToJson(policy: ExamPolicy | null): Record<string, unknown> | null {
+  if (!policy) return null;
+  return {
+    time_limit_sec: policy.timeLimitSec,
+    submission_limit: policy.submissionLimit,
+    started_at: policy.startedAtIso,
+  };
+}
+
+function formatDurationShort(totalSec: number): string {
+  if (totalSec < 60) return `${totalSec} 秒`;
+  if (totalSec % 60 === 0) return `${Math.round(totalSec / 60)} 分钟`;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m} 分 ${s} 秒`;
+}
+
+function formatCountdown(totalSec: number): string {
+  const sec = Math.max(0, Math.floor(totalSec));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) {
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(
+      s,
+    ).padStart(2, "0")}`;
+  }
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
 function listFromUnknown(value: unknown, max = 8): string[] {
@@ -169,7 +247,11 @@ function parseRoundOutput(modelOutput: unknown): BuildSimRoundOutput | null {
   return coerceBuildSimRoundOutput(record.round_output ?? modelOutput);
 }
 
-export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[] }) {
+export function DrillPracticeClient(props: {
+  drill: Drill;
+  assets?: DrillAsset[];
+  sessionMode?: SessionMode;
+}) {
   const [promptText, setPromptText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [typingStatus, setTypingStatus] = useState("");
@@ -185,6 +267,8 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
   const [assetTab, setAssetTab] = useState<AssetTab>("prompt");
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
 
   const settings = useMemo(() => loadLocalSettings(), []);
   const configuredDefaultFeedbackMode: FeedbackMode =
@@ -192,6 +276,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
   const allowMidReviewInFinalOnly = Boolean(settings.finalOnlyAllowMidReview);
   const assets = useMemo(() => props.assets ?? [], [props.assets]);
   const code = formatDrillCode(props.drill.displayNo);
+  const currentSessionMode: SessionMode = props.sessionMode === "exam" ? "exam" : "coach";
 
   const fileAssets = useMemo(
     () => assets.filter((a) => a.assetKind === "file").sort((a, b) => a.orderNo - b.orderNo),
@@ -199,6 +284,10 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
   );
   const logAssets = useMemo(
     () => assets.filter((a) => a.assetKind === "log").sort((a, b) => a.orderNo - b.orderNo),
+    [assets],
+  );
+  const imageAssets = useMemo(
+    () => assets.filter((a) => a.assetKind === "image").sort((a, b) => a.orderNo - b.orderNo),
     [assets],
   );
   const specAssets = useMemo(
@@ -209,12 +298,81 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
   const selectedAttempt = attempts.find((a) => a.id === selectedAttemptId) ?? null;
   const activeSession = sessions.find((s) => s.id === activeSessionId) ?? null;
 
+  const fallbackExamPolicy = useMemo<ExamPolicy | null>(() => {
+    if (currentSessionMode !== "exam") return null;
+    return {
+      timeLimitSec: props.drill.examTimeLimitSec ?? null,
+      submissionLimit: props.drill.examSubmissionLimit ?? null,
+      startedAtIso: null,
+    };
+  }, [currentSessionMode, props.drill.examTimeLimitSec, props.drill.examSubmissionLimit]);
+  const activeExamPolicy = useMemo<ExamPolicy | null>(() => {
+    if (currentSessionMode !== "exam") return null;
+    return activeSession?.examPolicy ?? fallbackExamPolicy;
+  }, [currentSessionMode, activeSession, fallbackExamPolicy]);
+
   const activeSessionRoundCount = useMemo(() => {
     if (!activeSessionId) return 0;
     return attempts.filter(
       (a) => a.source === "cloud" && a.sessionId === activeSessionId && a.sessionStatus === "in_progress",
     ).length;
   }, [attempts, activeSessionId]);
+  const activeSessionSubmittedCount = useMemo(() => {
+    if (!activeSessionId) return 0;
+    return attempts.filter((a) => a.source === "cloud" && a.sessionId === activeSessionId).length;
+  }, [attempts, activeSessionId]);
+
+  const examStartMs = useMemo(() => {
+    if (currentSessionMode !== "exam" || !activeSession) return null;
+    const source =
+      activeExamPolicy?.startedAtIso ??
+      parseIsoDate(activeSession.createdAt) ??
+      null;
+    if (!source) return null;
+    const ms = new Date(source).getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }, [currentSessionMode, activeSession, activeExamPolicy]);
+  const examDeadlineMs = useMemo(() => {
+    if (!examStartMs || !activeExamPolicy?.timeLimitSec) return null;
+    return examStartMs + activeExamPolicy.timeLimitSec * 1000;
+  }, [examStartMs, activeExamPolicy]);
+  const examRemainingSec = useMemo(() => {
+    if (examDeadlineMs === null) return null;
+    return Math.max(0, Math.floor((examDeadlineMs - nowMs) / 1000));
+  }, [examDeadlineMs, nowMs]);
+  const examTimedOut = Boolean(
+    currentSessionMode === "exam" && examRemainingSec !== null && examRemainingSec <= 0,
+  );
+  const examSubmissionLimit = activeExamPolicy?.submissionLimit ?? null;
+  const examRemainingSubmissions = useMemo(() => {
+    if (!examSubmissionLimit) return null;
+    return Math.max(0, examSubmissionLimit - activeSessionSubmittedCount);
+  }, [examSubmissionLimit, activeSessionSubmittedCount]);
+  const examSubmissionLimitReached = Boolean(
+    currentSessionMode === "exam" &&
+      examSubmissionLimit !== null &&
+      examRemainingSubmissions !== null &&
+      examRemainingSubmissions <= 0,
+  );
+  const examNeedsLogin = Boolean(currentSessionMode === "exam" && !userId);
+  const examSessionCompleted = Boolean(
+    currentSessionMode === "exam" && activeSession?.status === "completed",
+  );
+  const examLockedReason = useMemo(() => {
+    if (currentSessionMode !== "exam") return null;
+    if (examNeedsLogin) return "考试模式需要登录后才能提交。";
+    if (examSessionCompleted) return "本次考试会话已交卷完成。";
+    if (examTimedOut) return "考试已超时，请先交卷查看报告。";
+    if (examSubmissionLimitReached) return "已达到提交次数上限，请先交卷。";
+    return null;
+  }, [
+    currentSessionMode,
+    examNeedsLogin,
+    examSessionCompleted,
+    examTimedOut,
+    examSubmissionLimitReached,
+  ]);
+  const examSubmitLocked = Boolean(currentSessionMode === "exam" && examLockedReason);
 
   const modeLocked = Boolean(
     userId && activeSession && activeSession.status === "in_progress" && activeSessionRoundCount > 0,
@@ -224,7 +382,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
     userId &&
       activeSession &&
       activeSession.status === "in_progress" &&
-      activeSession.feedbackMode === "final_only" &&
+      (activeSession.feedbackMode === "final_only" || currentSessionMode === "exam") &&
       activeSessionRoundCount > 0,
   );
 
@@ -239,6 +397,19 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
       prev && logAssets.some((a) => a.id === prev) ? prev : logAssets[0]?.id ?? null,
     );
   }, [logAssets]);
+
+  useEffect(() => {
+    setSelectedImageId((prev) =>
+      prev && imageAssets.some((a) => a.id === prev) ? prev : imageAssets[0]?.id ?? null,
+    );
+  }, [imageAssets]);
+
+  useEffect(() => {
+    if (currentSessionMode !== "exam") return;
+    setNowMs(Date.now());
+    const timer = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [currentSessionMode, activeSessionId]);
 
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
@@ -266,7 +437,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
 
       const { data: sessionData, error: sessionErr } = await supabase
         .from("drill_sessions")
-        .select("id,feedback_mode,status,final_report_json")
+        .select("id,session_mode,feedback_mode,status,created_at,exam_policy_json,final_report_json")
         .eq("user_id", uid)
         .eq("drill_id", props.drill.id)
         .order("created_at", { ascending: false })
@@ -276,24 +447,32 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
 
       const parsedSessions = ((sessionData ?? []) as SessionRow[]).map((row) => ({
         id: row.id,
-        feedbackMode: parseMode(row.feedback_mode),
+        sessionMode: parseSessionMode(row.session_mode),
+        feedbackMode:
+          currentSessionMode === "exam" ? "final_only" : parseMode(row.feedback_mode),
         status: parseStatus(row.status),
+        createdAt: row.created_at,
+        examPolicy: parseExamPolicy(row.exam_policy_json),
         finalReport: parseFinalReport(row.final_report_json),
       } satisfies SessionVM));
 
-      setSessions(parsedSessions);
-      const inProgress = parsedSessions.find((row) => row.status === "in_progress") ?? null;
+      const scopedSessions = parsedSessions.filter((row) => row.sessionMode === currentSessionMode);
+      setSessions(scopedSessions);
+      const inProgress = scopedSessions.find((row) => row.status === "in_progress") ?? null;
       setActiveSessionId(inProgress?.id ?? null);
-      if (inProgress) setFeedbackMode(inProgress.feedbackMode);
-      else setFeedbackMode(configuredDefaultFeedbackMode);
+      if (inProgress) {
+        setFeedbackMode(currentSessionMode === "exam" ? "final_only" : inProgress.feedbackMode);
+      } else {
+        setFeedbackMode(currentSessionMode === "exam" ? "final_only" : configuredDefaultFeedbackMode);
+      }
 
-      if (parsedSessions.length === 0) {
+      if (scopedSessions.length === 0) {
         setAttempts([]);
         setSelectedAttemptId(null);
         return;
       }
 
-      const sessionIds = parsedSessions.map((row) => row.id);
+      const sessionIds = scopedSessions.map((row) => row.id);
       const { data: roundData, error: roundErr } = await supabase
         .from("drill_session_rounds")
         .select("id,session_id,round_no,user_prompt_text,model_output_json,round_eval_json,eval_visible_to_user,created_at")
@@ -303,7 +482,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
 
       if (roundErr) throw roundErr;
 
-      const sessionMap = new Map(parsedSessions.map((row) => [row.id, row]));
+      const sessionMap = new Map(scopedSessions.map((row) => [row.id, row]));
       const nextAttempts: AttemptVM[] = [];
       for (const row of (roundData ?? []) as RoundRow[]) {
         const session = sessionMap.get(row.session_id);
@@ -338,7 +517,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
         return nextAttempts[0]?.id ?? null;
       });
     },
-    [props.drill.id, configuredDefaultFeedbackMode],
+    [props.drill.id, configuredDefaultFeedbackMode, currentSessionMode],
   );
 
   useEffect(() => {
@@ -384,7 +563,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
       if (!active) return;
       setSessions([]);
       setActiveSessionId(null);
-      setFeedbackMode("guided");
+      setFeedbackMode(currentSessionMode === "exam" ? "final_only" : "guided");
       setAttempts(localAttempts);
       setSelectedAttemptId(localAttempts[0]?.id ?? null);
     }
@@ -393,7 +572,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
     return () => {
       active = false;
     };
-  }, [props.drill.id, userId, loadCloudData]);
+  }, [props.drill.id, userId, loadCloudData, currentSessionMode]);
 
   useEffect(() => {
     setMidReviewVisibleRoundIds([]);
@@ -427,9 +606,45 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
   }, [submitting]);
 
   async function ensureSession(uid: string): Promise<SessionVM> {
-    if (activeSession && activeSession.status === "in_progress" && activeSession.feedbackMode === feedbackMode) {
+    const expectedFeedbackMode: FeedbackMode =
+      currentSessionMode === "exam" ? "final_only" : feedbackMode;
+
+    if (
+      activeSession &&
+      activeSession.status === "in_progress" &&
+      activeSession.feedbackMode === expectedFeedbackMode &&
+      activeSession.sessionMode === currentSessionMode
+    ) {
+      if (currentSessionMode === "exam" && !activeSession.examPolicy) {
+        const derivedPolicy: ExamPolicy = {
+          timeLimitSec: props.drill.examTimeLimitSec ?? null,
+          submissionLimit: props.drill.examSubmissionLimit ?? null,
+          startedAtIso: parseIsoDate(activeSession.createdAt),
+        };
+        const supabase = getSupabaseBrowserClient();
+        const { error: patchErr } = await supabase
+          .from("drill_sessions")
+          .update({ exam_policy_json: examPolicyToJson(derivedPolicy) })
+          .eq("id", activeSession.id)
+          .eq("user_id", uid);
+        if (!patchErr) {
+          const patched = { ...activeSession, examPolicy: derivedPolicy };
+          setSessions((prev) => prev.map((s) => (s.id === patched.id ? patched : s)));
+          return patched;
+        }
+      }
       return activeSession;
     }
+
+    const nowIso = new Date().toISOString();
+    const examPolicy: ExamPolicy | null =
+      currentSessionMode === "exam"
+        ? {
+            timeLimitSec: props.drill.examTimeLimitSec ?? null,
+            submissionLimit: props.drill.examSubmissionLimit ?? null,
+            startedAtIso: nowIso,
+          }
+        : null;
 
     const supabase = getSupabaseBrowserClient();
     const { data, error } = await supabase
@@ -437,10 +652,12 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
       .insert({
         user_id: uid,
         drill_id: props.drill.id,
-        feedback_mode: feedbackMode,
+        session_mode: currentSessionMode,
+        feedback_mode: expectedFeedbackMode,
+        exam_policy_json: examPolicyToJson(examPolicy),
         status: "in_progress",
       })
-      .select("id,feedback_mode,status,final_report_json")
+      .select("id,session_mode,feedback_mode,status,created_at,exam_policy_json,final_report_json")
       .single();
 
     if (error) throw error;
@@ -448,8 +665,11 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
     const row = data as SessionRow;
     const session: SessionVM = {
       id: row.id,
+      sessionMode: parseSessionMode(row.session_mode),
       feedbackMode: parseMode(row.feedback_mode),
       status: parseStatus(row.status),
+      createdAt: row.created_at,
+      examPolicy: parseExamPolicy(row.exam_policy_json),
       finalReport: parseFinalReport(row.final_report_json),
     };
     setSessions((prev) => [session, ...prev]);
@@ -460,12 +680,34 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
   async function submitCloudRound(uid: string, text: string, result: CoachResult) {
     const supabase = getSupabaseBrowserClient();
     const session = await ensureSession(uid);
+    if (session.status !== "in_progress") {
+      throw new Error("当前会话已结束，请刷新后重新开始。");
+    }
+
+    if (currentSessionMode === "exam") {
+      const startedAtIso = parseIsoDate(session.examPolicy?.startedAtIso ?? session.createdAt);
+      const timeLimitSec = session.examPolicy?.timeLimitSec ?? props.drill.examTimeLimitSec ?? null;
+      if (startedAtIso && timeLimitSec) {
+        const startedMs = new Date(startedAtIso).getTime();
+        if (Number.isFinite(startedMs) && Date.now() > startedMs + timeLimitSec * 1000) {
+          throw new Error("考试已超时，请先交卷后再继续。");
+        }
+      }
+    }
 
     const { count, error: countErr } = await supabase
       .from("drill_session_rounds")
       .select("id", { count: "exact", head: true })
       .eq("session_id", session.id);
     if (countErr) throw countErr;
+
+    if (currentSessionMode === "exam") {
+      const submissionLimit = session.examPolicy?.submissionLimit ?? props.drill.examSubmissionLimit ?? null;
+      const roundCount = Math.max(0, Number(count ?? 0));
+      if (submissionLimit && roundCount >= submissionLimit) {
+        throw new Error("已达到本场提交上限，请先交卷查看结果。");
+      }
+    }
 
     const output = coerceBuildSimRoundOutput(result.round_output ?? null);
     const safeFeedback = coerceCoachFeedback(result.feedback, result.feedback?.score_total);
@@ -508,6 +750,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
     const { error: attemptErr } = await supabase.from("drill_attempts").insert({
       user_id: uid,
       drill_id: props.drill.id,
+      session_mode: session.sessionMode,
       prompt_text: text,
       coach_mode: result.mode,
       coach_feedback: safeFeedback,
@@ -524,6 +767,16 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
   async function onSubmit() {
     const text = promptText.trim();
     if (!text) return;
+    if (currentSessionMode === "exam") {
+      if (!userId) {
+        setErrorMsg("考试模式需登录后提交。");
+        return;
+      }
+      if (examLockedReason) {
+        setErrorMsg(examLockedReason);
+        return;
+      }
+    }
 
     setSubmitting(true);
     setErrorMsg(null);
@@ -536,7 +789,11 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
         body: JSON.stringify({
           drillId: props.drill.id,
           promptText: text,
-          attemptIndex: attempts.length,
+          attemptIndex:
+            currentSessionMode === "exam"
+              ? activeSessionSubmittedCount
+              : attempts.length,
+          sessionMode: currentSessionMode,
           openaiProvider: settings.openaiProvider,
           openaiApiKey: settings.openaiApiKey,
           openaiBaseUrl: settings.openaiBaseUrl,
@@ -560,13 +817,15 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
         round_output: coerceBuildSimRoundOutput(json.result.round_output ?? null),
       };
 
-      if (userId) {
-        await submitCloudRound(userId, text, result);
-        markDrillPracticed(props.drill.id);
-        if (feedbackMode === "final_only") {
-          setInfoMsg(
-            allowMidReviewInFinalOnly
-              ? "本轮评估已记录。你可查看简版评分，完整改进建议将在会话完成后统一展示。"
+        if (userId) {
+          await submitCloudRound(userId, text, result);
+          markDrillPracticed(props.drill.id);
+          if (currentSessionMode === "exam") {
+            setInfoMsg("本轮已提交。考试模式将于交卷后统一展示完整评分。");
+          } else if (feedbackMode === "final_only") {
+            setInfoMsg(
+              allowMidReviewInFinalOnly
+                ? "本轮评估已记录。你可查看简版评分，完整改进建议将在会话完成后统一展示。"
               : "本轮评估已记录，终局评分模式会在完成会话后统一展示。",
           );
         }
@@ -606,7 +865,13 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
   }
 
   async function onCompleteFinalSession() {
-    if (!userId || !activeSession || activeSession.feedbackMode !== "final_only") return;
+    if (
+      !userId ||
+      !activeSession ||
+      (activeSession.feedbackMode !== "final_only" && currentSessionMode !== "exam")
+    ) {
+      return;
+    }
 
     const sessionAttempts = attempts.filter((a) => a.source === "cloud" && a.sessionId === activeSession.id);
     if (sessionAttempts.length === 0) {
@@ -634,7 +899,11 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
         .eq("user_id", userId);
       if (sessionErr) throw sessionErr;
 
-      setInfoMsg("终局评分已生成，全部轮次评分已解锁。");
+      setInfoMsg(
+        currentSessionMode === "exam"
+          ? "考试报告已生成，全部轮次评分已解锁。"
+          : "终局评分已生成，全部轮次评分已解锁。",
+      );
       await loadCloudData(userId);
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : "终局评分失败");
@@ -650,9 +919,18 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
     if (userId) {
       const supabase = getSupabaseBrowserClient();
       Promise.all([
-        supabase.from("drill_attempts").delete().eq("drill_id", props.drill.id),
-        supabase.from("drill_sessions").delete().eq("drill_id", props.drill.id).eq("user_id", userId),
-        supabase.from("drill_user_progress").delete().eq("drill_id", props.drill.id).eq("user_id", userId),
+        supabase
+          .from("drill_attempts")
+          .delete()
+          .eq("drill_id", props.drill.id)
+          .eq("user_id", userId)
+          .eq("session_mode", currentSessionMode),
+        supabase
+          .from("drill_sessions")
+          .delete()
+          .eq("drill_id", props.drill.id)
+          .eq("user_id", userId)
+          .eq("session_mode", currentSessionMode),
       ]).then(([a, s]) => {
         if (a.error) return setErrorMsg(a.error.message);
         if (s.error) return setErrorMsg(s.error.message);
@@ -678,6 +956,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
   const canRevealMidReview = Boolean(
     selectedAttempt &&
       selectedAttempt.source === "cloud" &&
+      currentSessionMode !== "exam" &&
       selectedAttempt.feedbackMode === "final_only" &&
       selectedAttempt.sessionStatus === "in_progress" &&
       !selectedAttempt.visible &&
@@ -710,8 +989,40 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
               <span className="rounded-full border border-border/70 bg-background/85 px-3 py-1 text-muted-foreground">
                 {DRILL_TYPE_LABEL[props.drill.drillType]}
               </span>
+              <span className="rounded-full border border-border/70 bg-background/85 px-3 py-1 text-muted-foreground">
+                {currentSessionMode === "exam" ? "考试模式" : "教练模式"}
+              </span>
+              {currentSessionMode === "exam" && props.drill.examTrack ? (
+                <span className="rounded-full border border-border/70 bg-background/85 px-3 py-1 text-muted-foreground">
+                  赛道 {props.drill.examTrack}
+                </span>
+              ) : null}
             </div>
           </div>
+          {currentSessionMode === "exam" ? (
+            <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3">
+              <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-muted-foreground">
+                限时：
+                <span className="ml-1 font-medium text-foreground">
+                  {activeExamPolicy?.timeLimitSec
+                    ? formatDurationShort(activeExamPolicy.timeLimitSec)
+                    : "不限时"}
+                </span>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-muted-foreground">
+                提交上限：
+                <span className="ml-1 font-medium text-foreground">
+                  {activeExamPolicy?.submissionLimit ?? "不限次"}
+                </span>
+              </div>
+              <div className="rounded-xl border border-border/70 bg-background/80 px-3 py-2 text-muted-foreground">
+                剩余时间：
+                <span className="ml-1 font-medium text-foreground">
+                  {examRemainingSec === null ? "未开始" : formatCountdown(examRemainingSec)}
+                </span>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="rounded-3xl border border-border/60 bg-background p-5">
@@ -720,6 +1031,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
               ["prompt", "题面"],
               ["file", `文件(${fileAssets.length})`],
               ["log", `日志(${logAssets.length})`],
+              ["image", `图片(${imageAssets.length})`],
             ] as const).map(([key, label]) => (
               <button
                 key={key}
@@ -779,7 +1091,7 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
                 </pre>
               </div>
             )
-          ) : logAssets.length === 0 ? (
+          ) : assetTab === "log" ? logAssets.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border/70 bg-muted/10 p-4 text-sm text-muted-foreground">当前题目没有日志附件。</div>
           ) : (
             <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
@@ -805,6 +1117,50 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
                 {selectedLog?.contentText ?? ""}
               </pre>
             </div>
+          ) : imageAssets.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/70 bg-muted/10 p-4 text-sm text-muted-foreground">当前题目没有图片附件。</div>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-[260px_minmax(0,1fr)]">
+              <div className="grid max-h-72 gap-2 overflow-y-auto pr-1">
+                {imageAssets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => setSelectedImageId(asset.id)}
+                    className={[
+                      "rounded-2xl border px-3 py-2 text-left text-xs transition-colors",
+                      selectedImageId === asset.id
+                        ? "border-foreground bg-muted/30 text-foreground"
+                        : "border-border/60 bg-background text-muted-foreground hover:text-foreground",
+                    ].join(" ")}
+                  >
+                    <p className="truncate font-medium">{asset.path}</p>
+                    <p className="mt-1 text-[11px]">排序 {asset.orderNo}</p>
+                  </button>
+                ))}
+              </div>
+              {(() => {
+                const selectedImage = imageAssets.find((a) => a.id === selectedImageId) ?? imageAssets[0]!;
+                const rawSrc = (selectedImage.contentText || "").trim() || selectedImage.path;
+                const src =
+                  /^https?:\/\//.test(rawSrc) || rawSrc.startsWith("/")
+                    ? rawSrc
+                    : `/${rawSrc.replace(/^\/+/, "")}`;
+                return (
+                  <div className="rounded-2xl border border-border/60 bg-muted/20 p-3">
+                    <Image
+                      src={src}
+                      alt={selectedImage.path}
+                      width={1600}
+                      height={900}
+                      unoptimized
+                      className="max-h-[24rem] w-full rounded-xl border border-border/40 object-contain bg-background"
+                    />
+                    <p className="mt-2 text-xs text-muted-foreground">{selectedImage.path}</p>
+                  </div>
+                );
+              })()}
+            </div>
           )}
         </div>
 
@@ -816,6 +1172,24 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
                 记录：
                 <span className="ml-1 font-medium text-foreground">{userId ? "云端会话" : "本地"}</span>
               </span>
+              <span className="text-muted-foreground/60">·</span>
+              <span>
+                模式：
+                <span className="ml-1 font-medium text-foreground">
+                  {currentSessionMode === "exam" ? "考试" : "教练"}
+                </span>
+              </span>
+              {currentSessionMode === "exam" ? (
+                <>
+                  <span className="text-muted-foreground/60">·</span>
+                  <span>
+                    剩余提交：
+                    <span className="ml-1 font-medium text-foreground">
+                      {examRemainingSubmissions ?? "不限次"}
+                    </span>
+                  </span>
+                </>
+              ) : null}
               <span className="text-muted-foreground/60">·</span>
               <Link href="/settings" className="underline underline-offset-4">去配置</Link>
               {!userId ? (
@@ -837,21 +1211,24 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <button
               onClick={() => void onSubmit()}
-              disabled={submitting || !promptText.trim()}
+              disabled={submitting || !promptText.trim() || examSubmitLocked}
               className="inline-flex h-10 items-center justify-center rounded-full bg-foreground px-5 text-sm font-medium text-background shadow-sm disabled:opacity-50"
             >
               {submitting ? "提交中..." : "提交本轮"}
             </button>
 
-            <button
-              onClick={onClearHistory}
-              className="inline-flex h-10 items-center justify-center rounded-full border border-border/70 bg-background px-5 text-sm font-medium text-foreground shadow-sm"
-              type="button"
-            >
-              清空本题历史
-            </button>
+            {currentSessionMode === "coach" ? (
+              <button
+                onClick={onClearHistory}
+                className="inline-flex h-10 items-center justify-center rounded-full border border-border/70 bg-background px-5 text-sm font-medium text-foreground shadow-sm"
+                type="button"
+              >
+                清空本题历史
+              </button>
+            ) : null}
           </div>
 
+          {examLockedReason ? <p className="mt-2 text-sm text-muted-foreground">{examLockedReason}</p> : null}
           {errorMsg ? <p className="mt-2 text-sm text-destructive">{errorMsg}</p> : null}
           {infoMsg ? <p className="mt-2 text-sm text-muted-foreground">{infoMsg}</p> : null}
         </div>
@@ -859,54 +1236,80 @@ export function DrillPracticeClient(props: { drill: Drill; assets?: DrillAsset[]
 
       <section className="grid gap-4">
         <div className="rounded-3xl border border-border/60 bg-background p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          {currentSessionMode === "exam" ? (
             <div>
-              <p className="text-sm font-semibold">反馈模式</p>
+              <p className="text-sm font-semibold">考试规则</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                过程引导会每轮即时评分；终局评分会先隐藏完整评估，完成后统一展示。
+                考试模式固定为终局评分，考中隐藏完整建议，交卷后统一解锁报告。
               </p>
+              {activeExamPolicy?.timeLimitSec ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  限时 {formatDurationShort(activeExamPolicy.timeLimitSec)}。
+                  {examRemainingSec !== null ? ` 当前剩余 ${formatCountdown(examRemainingSec)}。` : " 会话开始后倒计时。"}
+                </p>
+              ) : null}
+              {activeExamPolicy?.submissionLimit ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  最多提交 {activeExamPolicy.submissionLimit} 次。
+                  {examRemainingSubmissions !== null ? ` 当前剩余 ${examRemainingSubmissions} 次。` : ""}
+                </p>
+              ) : null}
+              {!userId ? (
+                <p className="mt-2 text-xs text-muted-foreground">登录后才能创建考试会话并提交。</p>
+              ) : null}
             </div>
-            <div className="flex rounded-full border border-border/70 bg-muted/20 p-1">
-              {([
-                ["guided", "过程引导"],
-                ["final_only", "终局评分"],
-              ] as const).map(([mode, label]) => {
-                const active = feedbackMode === mode;
-                const disabled = !userId || (modeLocked && !active);
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => {
-                      if (!disabled) setFeedbackMode(mode);
-                    }}
-                    className={[
-                      "rounded-full px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-                      active ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
-                    ].join(" ")}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">反馈模式</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    过程引导会每轮即时评分；终局评分会先隐藏完整评估，完成后统一展示。
+                  </p>
+                </div>
+                <div className="flex rounded-full border border-border/70 bg-muted/20 p-1">
+                  {([
+                    ["guided", "过程引导"],
+                    ["final_only", "终局评分"],
+                  ] as const).map(([mode, label]) => {
+                    const active = feedbackMode === mode;
+                    const disabled = !userId || (modeLocked && !active);
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => {
+                          if (!disabled) setFeedbackMode(mode);
+                        }}
+                        className={[
+                          "rounded-full px-3 py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                          active ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground",
+                        ].join(" ")}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-          {!userId ? <p className="mt-2 text-xs text-muted-foreground">登录后可启用会话级反馈模式与终局复盘。</p> : null}
-          {modeLocked ? <p className="mt-2 text-xs text-muted-foreground">当前会话进行中，模式暂时锁定。</p> : null}
-          {allowMidReviewInFinalOnly ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              已开启终局模式中途查看：仅可查看单轮分数，不展示改进建议。
-            </p>
-          ) : null}
+              {!userId ? <p className="mt-2 text-xs text-muted-foreground">登录后可启用会话级反馈模式与终局复盘。</p> : null}
+              {modeLocked ? <p className="mt-2 text-xs text-muted-foreground">当前会话进行中，模式暂时锁定。</p> : null}
+              {allowMidReviewInFinalOnly ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  已开启终局模式中途查看：仅可查看单轮分数，不展示改进建议。
+                </p>
+              ) : null}
+            </>
+          )}
           {canCompleteFinal ? (
             <button
               type="button"
               onClick={() => void onCompleteFinalSession()}
               className="mt-3 inline-flex h-9 items-center justify-center rounded-full border border-border/70 bg-background px-4 text-xs font-medium"
             >
-              完成本次会话并生成终局评分
+              {currentSessionMode === "exam" ? "交卷并生成考试报告" : "完成会话并生成终局评分"}
             </button>
           ) : null}
         </div>

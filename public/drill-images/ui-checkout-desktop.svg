@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+  <rect width="1280" height="720" fill="#f8fafc"/>
+  <rect x="24" y="24" width="1232" height="70" rx="12" fill="#111827"/>
+  <text x="56" y="70" font-size="28" fill="#fff" font-family="Arial">Checkout Flow</text>
+  <rect x="24" y="118" width="820" height="578" rx="12" fill="#e2e8f0"/>
+  <rect x="868" y="118" width="388" height="578" rx="12" fill="#e9d5ff"/>
+  <rect x="52" y="154" width="760" height="80" rx="10" fill="#fff"/>
+  <rect x="52" y="252" width="760" height="80" rx="10" fill="#fff"/>
+  <rect x="52" y="350" width="760" height="80" rx="10" fill="#fff"/>
+  <rect x="52" y="448" width="760" height="80" rx="10" fill="#fff"/>
+  <rect x="52" y="550" width="300" height="90" rx="10" fill="#111827"/>
+  <text x="124" y="607" font-size="30" fill="#fff" font-family="Arial">Pay</text>
+  <text x="896" y="164" font-size="24" fill="#5b21b6" font-family="Arial">Order Summary</text>
+</svg>

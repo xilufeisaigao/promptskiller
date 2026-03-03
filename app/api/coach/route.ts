@@ -17,6 +17,7 @@ const BodySchema = z.object({
   drillId: z.string().min(1),
   promptText: z.string().min(1).max(8000),
   attemptIndex: z.number().int().min(0).max(50).optional(),
+  sessionMode: z.enum(["coach", "exam"]).optional(),
 
   // Optional OpenAI config (user-provided key workflow).
   openaiProvider: z.enum(["openai", "bailian", "custom"]).optional(),
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
     drillId,
     promptText,
     attemptIndex,
+    sessionMode,
     openaiProvider,
     openaiApiKey,
     openaiBaseUrl,
@@ -60,10 +62,17 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  if (sessionMode === "exam" && !drill.modeVisibility.includes("exam")) {
+    return NextResponse.json(
+      { ok: false, reason: "该题目未开放考试模式。" },
+      { status: 400 },
+    );
+  }
 
   const trimmedKey = (openaiApiKey || "").trim();
   const shouldUseOpenAI = Boolean(trimmedKey);
-  const isBuildSimCase = drill.drillType === "build_sim_case";
+  const shouldReturnCodeOutput =
+    drill.drillType === "build_sim_case" || sessionMode === "exam";
   const roundNo = (attemptIndex ?? 0) + 1;
 
   let mode: CoachMode = "mock";
@@ -80,7 +89,7 @@ export async function POST(req: Request) {
       });
 
       let roundOutput = null;
-      if (isBuildSimCase) {
+      if (shouldReturnCodeOutput) {
         try {
           const generated = await createBuildSimRoundOutputWithOpenAI({
             apiKey: trimmedKey,
@@ -106,7 +115,7 @@ export async function POST(req: Request) {
     }
 
     const feedback = mockCoachFeedback({ drill, promptText });
-    const roundOutput = isBuildSimCase
+    const roundOutput = shouldReturnCodeOutput
       ? buildMockBuildSimRoundOutput({
           drillTitle: drill.title,
           promptText,

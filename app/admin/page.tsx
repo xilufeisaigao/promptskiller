@@ -11,7 +11,10 @@ type AuthState =
   | { kind: "forbidden"; userId: string; email: string | null }
   | { kind: "ready"; userId: string; email: string | null };
 type DrillType = "prompt_case" | "code_case_multi" | "build_sim_case" | "template_case";
-type AssetKind = "file" | "log" | "spec";
+type AssetKind = "file" | "log" | "spec" | "image";
+type DrillMode = "coach" | "exam";
+type CapabilityDomain = "coding" | "docs" | "tools" | "life";
+type ExamTrack = "debug" | "feature" | "from_zero";
 type Drill = {
   id: string;
   display_no: number | null;
@@ -19,6 +22,11 @@ type Drill = {
   body_md: string;
   difficulty: number;
   drill_type: DrillType;
+  mode_visibility: DrillMode[] | null;
+  capability_domain: CapabilityDomain | null;
+  exam_track: ExamTrack | null;
+  exam_time_limit_sec: number | null;
+  exam_submission_limit: number | null;
   tags: string[] | null;
   published_at: string | null;
 };
@@ -52,6 +60,39 @@ const tags = (s: string) => {
   const x = s.split(",").map((v) => v.trim().toLowerCase()).filter(Boolean);
   return x.length ? Array.from(new Set(x)) : null;
 };
+const toPositiveIntOrNull = (input: string) => {
+  const value = Math.round(Number(input));
+  return Number.isFinite(value) && value > 0 ? value : null;
+};
+const normalizeCapabilityDomain = (value: unknown): CapabilityDomain => {
+  if (value === "docs" || value === "tools" || value === "life") return value;
+  return "coding";
+};
+const normalizeExamTrack = (value: unknown): ExamTrack | "" => {
+  if (value === "debug" || value === "feature" || value === "from_zero") return value;
+  return "";
+};
+const defaultExamTrackByType = (drillType: DrillType): ExamTrack => {
+  if (drillType === "code_case_multi") return "debug";
+  if (drillType === "build_sim_case") return "from_zero";
+  return "feature";
+};
+const normalizeModes = (value: unknown): DrillMode[] => {
+  if (!Array.isArray(value)) return ["coach"];
+  const out = new Set<DrillMode>();
+  for (const x of value) {
+    if (x === "coach" || x === "exam") out.add(x);
+  }
+  if (out.size === 0) out.add("coach");
+  return [...out];
+};
+const toModeVisibility = (coachVisible: boolean, examVisible: boolean): DrillMode[] => {
+  const out: DrillMode[] = [];
+  if (coachVisible) out.push("coach");
+  if (examVisible) out.push("exam");
+  if (out.length === 0) out.push("coach");
+  return out;
+};
 const pickDrill = (d: Schedule["drill"]) => (Array.isArray(d) ? d[0] ?? null : d);
 const toLocal = (iso?: string | null) => (iso ? new Date(iso).toISOString().slice(0, 16) : "");
 const typeLabel: Record<DrillType, string> = {
@@ -59,6 +100,11 @@ const typeLabel: Record<DrillType, string> = {
   code_case_multi: "多文件题",
   build_sim_case: "模拟构建题",
   template_case: "教学样板题",
+};
+const modeLabelText = (value: unknown) => {
+  const modes = normalizeModes(value);
+  if (modes.includes("coach") && modes.includes("exam")) return "coach+exam";
+  return modes.includes("exam") ? "exam" : "coach";
 };
 
 export default function AdminPage() {
@@ -78,6 +124,12 @@ export default function AdminPage() {
     title: "",
     difficulty: 2 as 1 | 2 | 3 | 4 | 5,
     drillType: "prompt_case" as DrillType,
+    coachVisible: true,
+    examVisible: false,
+    capabilityDomain: "coding" as CapabilityDomain,
+    examTrack: "" as ExamTrack | "",
+    examTimeLimitSec: "",
+    examSubmissionLimit: "",
     tags: "",
     body: "",
     publishNow: true,
@@ -87,6 +139,12 @@ export default function AdminPage() {
     title: "",
     difficulty: 2 as 1 | 2 | 3 | 4 | 5,
     drillType: "prompt_case" as DrillType,
+    coachVisible: true,
+    examVisible: false,
+    capabilityDomain: "coding" as CapabilityDomain,
+    examTrack: "" as ExamTrack | "",
+    examTimeLimitSec: "",
+    examSubmissionLimit: "",
     tags: "",
     body: "",
     publishedAt: "",
@@ -112,7 +170,7 @@ export default function AdminPage() {
 
   async function loadDrills(preferred?: string) {
     const supabase = getSupabaseBrowserClient();
-    const { data, error } = await supabase.from("drills").select("id,display_no,title,body_md,difficulty,drill_type,tags,published_at").order("display_no", { ascending: true }).order("id", { ascending: true });
+    const { data, error } = await supabase.from("drills").select("id,display_no,title,body_md,difficulty,drill_type,mode_visibility,capability_domain,exam_track,exam_time_limit_sec,exam_submission_limit,tags,published_at").order("display_no", { ascending: true }).order("id", { ascending: true });
     if (error) throw error;
     const rows = (data ?? []) as Drill[];
     setDrills(rows);
@@ -160,9 +218,11 @@ export default function AdminPage() {
   useEffect(() => {
     if (state.kind !== "ready" || !editId) return;
     const supabase = getSupabaseBrowserClient();
-    supabase.from("drills").select("title,body_md,difficulty,drill_type,tags,published_at").eq("id", editId).maybeSingle().then(({ data, error }) => {
+    supabase.from("drills").select("title,body_md,difficulty,drill_type,mode_visibility,capability_domain,exam_track,exam_time_limit_sec,exam_submission_limit,tags,published_at").eq("id", editId).maybeSingle().then(({ data, error }) => {
       if (error) return setMsg({ err: error.message });
       if (!data) return;
+      const modes = normalizeModes(data.mode_visibility);
+      const examVisible = modes.includes("exam");
       setEditForm({
         title: String(data.title ?? ""),
         body: String(data.body_md ?? ""),
@@ -173,6 +233,18 @@ export default function AdminPage() {
           data.drill_type === "template_case"
             ? data.drill_type
             : "prompt_case",
+        coachVisible: modes.includes("coach"),
+        examVisible,
+        capabilityDomain: normalizeCapabilityDomain(data.capability_domain),
+        examTrack: examVisible ? normalizeExamTrack(data.exam_track) : "",
+        examTimeLimitSec:
+          Number.isFinite(Number(data.exam_time_limit_sec)) && Number(data.exam_time_limit_sec) > 0
+            ? String(Math.round(Number(data.exam_time_limit_sec)))
+            : "",
+        examSubmissionLimit:
+          Number.isFinite(Number(data.exam_submission_limit)) && Number(data.exam_submission_limit) > 0
+            ? String(Math.round(Number(data.exam_submission_limit)))
+            : "",
         tags: ((data.tags as string[] | null) ?? []).join(", "),
         publishedAt: toLocal(data.published_at as string | null),
       });
@@ -201,6 +273,8 @@ export default function AdminPage() {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) {
       throw new Error("题目 ID 只允许小写字母、数字与连字符。");
     }
+    const modeVisibility = toModeVisibility(createForm.coachVisible, createForm.examVisible);
+    const examVisible = modeVisibility.includes("exam");
     const supabase = getSupabaseBrowserClient();
     const { error } = await supabase.from("drills").insert({
       id,
@@ -208,12 +282,33 @@ export default function AdminPage() {
       body_md: createForm.body.trim(),
       difficulty: Number(createForm.difficulty),
       drill_type: createForm.drillType,
+      mode_visibility: modeVisibility,
+      capability_domain: createForm.capabilityDomain,
+      exam_track: examVisible
+        ? (createForm.examTrack || defaultExamTrackByType(createForm.drillType))
+        : null,
+      exam_time_limit_sec: examVisible ? toPositiveIntOrNull(createForm.examTimeLimitSec) : null,
+      exam_submission_limit: examVisible ? toPositiveIntOrNull(createForm.examSubmissionLimit) : null,
       tags: tags(createForm.tags),
       published_at: createForm.publishNow ? new Date().toISOString() : null,
     });
     if (error) throw error;
     await loadDrills(id);
-    setCreateForm({ id: "", title: "", difficulty: 2, drillType: "prompt_case", tags: "", body: "", publishNow: true });
+    setCreateForm({
+      id: "",
+      title: "",
+      difficulty: 2,
+      drillType: "prompt_case",
+      coachVisible: true,
+      examVisible: false,
+      capabilityDomain: "coding",
+      examTrack: "",
+      examTimeLimitSec: "",
+      examSubmissionLimit: "",
+      tags: "",
+      body: "",
+      publishNow: true,
+    });
     setMsg({ ok: `题目 ${id} 已创建` });
   }
 
@@ -222,6 +317,8 @@ export default function AdminPage() {
     if (!editForm.title.trim() || !editForm.body.trim()) {
       throw new Error("编辑题目时，标题和题面不能为空。");
     }
+    const modeVisibility = toModeVisibility(editForm.coachVisible, editForm.examVisible);
+    const examVisible = modeVisibility.includes("exam");
     const supabase = getSupabaseBrowserClient();
     const published = editForm.publishedAt.trim() ? new Date(editForm.publishedAt).toISOString() : null;
     const { error } = await supabase.from("drills").update({
@@ -229,6 +326,13 @@ export default function AdminPage() {
       body_md: editForm.body.trim(),
       difficulty: Number(editForm.difficulty),
       drill_type: editForm.drillType,
+      mode_visibility: modeVisibility,
+      capability_domain: editForm.capabilityDomain,
+      exam_track: examVisible
+        ? (editForm.examTrack || defaultExamTrackByType(editForm.drillType))
+        : null,
+      exam_time_limit_sec: examVisible ? toPositiveIntOrNull(editForm.examTimeLimitSec) : null,
+      exam_submission_limit: examVisible ? toPositiveIntOrNull(editForm.examSubmissionLimit) : null,
       tags: tags(editForm.tags),
       published_at: published,
     }).eq("id", editId);
@@ -354,7 +458,7 @@ export default function AdminPage() {
               <option value="1">第1题</option><option value="2">第2题</option><option value="3">第3题</option>
             </select>
             <select value={scheduleDrillId} onChange={(e) => setScheduleDrillId(e.target.value)} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm md:col-span-3">
-              {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]}</option>)}
+              {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]} · {modeLabelText(d.mode_visibility)}</option>)}
             </select>
           </div>
           <div className="mt-3 flex items-center gap-2">
@@ -379,7 +483,7 @@ export default function AdminPage() {
             <input type="date" value={bulkDate} onChange={(e) => setBulkDate(e.target.value)} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm" />
             <input type="number" min={1} max={30} value={bulkDays} onChange={(e) => setBulkDays(Number(e.target.value))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm" />
             <select value={bulkDrill} onChange={(e) => setBulkDrill(e.target.value)} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm md:col-span-2">
-              {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]}</option>)}
+              {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]} · {modeLabelText(d.mode_visibility)}</option>)}
             </select>
           </div>
           <button type="button" disabled={busy} onClick={() => void run(bulkSchedule)} className="mt-3 inline-flex h-10 items-center justify-center rounded-full bg-foreground px-4 text-sm font-medium text-background disabled:opacity-50">生成并覆盖</button>
@@ -395,13 +499,85 @@ export default function AdminPage() {
             <select value={String(createForm.difficulty)} onChange={(e) => setCreateForm((v) => ({ ...v, difficulty: Number(e.target.value) as 1 | 2 | 3 | 4 | 5 }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm">
               <option value="1">难度1</option><option value="2">难度2</option><option value="3">难度3</option><option value="4">难度4</option><option value="5">难度5</option>
             </select>
-            <select value={createForm.drillType} onChange={(e) => setCreateForm((v) => ({ ...v, drillType: e.target.value as DrillType }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm">
+            <select
+              value={createForm.drillType}
+              onChange={(e) =>
+                setCreateForm((v) => {
+                  const drillType = e.target.value as DrillType;
+                  return {
+                    ...v,
+                    drillType,
+                    examTrack: v.examVisible ? (v.examTrack || defaultExamTrackByType(drillType)) : v.examTrack,
+                  };
+                })
+              }
+              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm"
+            >
               <option value="prompt_case">普通题（prompt_case）</option>
               <option value="code_case_multi">多文件题（code_case_multi）</option>
               <option value="build_sim_case">模拟构建题（build_sim_case）</option>
               <option value="template_case">教学样板题（template_case）</option>
             </select>
             <input value={createForm.tags} onChange={(e) => setCreateForm((v) => ({ ...v, tags: e.target.value }))} placeholder="标签逗号分隔" className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm" />
+            <select value={createForm.capabilityDomain} onChange={(e) => setCreateForm((v) => ({ ...v, capabilityDomain: e.target.value as CapabilityDomain }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm">
+              <option value="coding">领域：coding</option>
+              <option value="docs">领域：docs</option>
+              <option value="tools">领域：tools</option>
+              <option value="life">领域：life</option>
+            </select>
+            <select
+              value={createForm.examTrack}
+              onChange={(e) => setCreateForm((v) => ({ ...v, examTrack: e.target.value as ExamTrack | "" }))}
+              disabled={!createForm.examVisible}
+              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm disabled:opacity-60"
+            >
+              <option value="">考试赛道（默认按题型推断）</option>
+              <option value="debug">debug</option>
+              <option value="feature">feature</option>
+              <option value="from_zero">from_zero</option>
+            </select>
+            <input
+              type="number"
+              min={1}
+              value={createForm.examTimeLimitSec}
+              onChange={(e) => setCreateForm((v) => ({ ...v, examTimeLimitSec: e.target.value }))}
+              placeholder="考试限时（秒，可选）"
+              disabled={!createForm.examVisible}
+              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm disabled:opacity-60"
+            />
+            <input
+              type="number"
+              min={1}
+              value={createForm.examSubmissionLimit}
+              onChange={(e) => setCreateForm((v) => ({ ...v, examSubmissionLimit: e.target.value }))}
+              placeholder="考试提交次数上限（可选）"
+              disabled={!createForm.examVisible}
+              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm disabled:opacity-60"
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={createForm.coachVisible}
+                onChange={(e) => setCreateForm((v) => ({ ...v, coachVisible: e.target.checked }))}
+              />
+              Coach 可见
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={createForm.examVisible}
+                onChange={(e) =>
+                  setCreateForm((v) => ({
+                    ...v,
+                    examVisible: e.target.checked,
+                    examTrack: e.target.checked ? (v.examTrack || defaultExamTrackByType(v.drillType)) : "",
+                  }))
+                }
+              />
+              Exam 可见
+            </label>
           </div>
           <textarea value={createForm.body} onChange={(e) => setCreateForm((v) => ({ ...v, body: e.target.value }))} placeholder="题面正文 Markdown" className="mt-2 min-h-36 w-full rounded-xl border border-border/70 bg-background px-3 py-2 text-sm" />
           <label className="mt-2 inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={createForm.publishNow} onChange={(e) => setCreateForm((v) => ({ ...v, publishNow: e.target.checked }))} /> 立即发布</label>
@@ -411,7 +587,7 @@ export default function AdminPage() {
         <div className="rounded-3xl border border-border/60 bg-background p-5">
           <p className="text-sm font-semibold">编辑/下线题目</p>
           <select value={editId} onChange={(e) => setEditId(e.target.value)} className="mt-3 h-10 w-full rounded-xl border border-border/70 bg-background px-3 text-sm">
-            {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]}</option>)}
+            {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]} · {modeLabelText(d.mode_visibility)}</option>)}
           </select>
           <div className="mt-2 grid gap-2 md:grid-cols-2">
             <input value={editForm.title} onChange={(e) => setEditForm((v) => ({ ...v, title: e.target.value }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm" />
@@ -419,13 +595,85 @@ export default function AdminPage() {
             <select value={String(editForm.difficulty)} onChange={(e) => setEditForm((v) => ({ ...v, difficulty: Number(e.target.value) as 1 | 2 | 3 | 4 | 5 }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm">
               <option value="1">难度1</option><option value="2">难度2</option><option value="3">难度3</option><option value="4">难度4</option><option value="5">难度5</option>
             </select>
-            <select value={editForm.drillType} onChange={(e) => setEditForm((v) => ({ ...v, drillType: e.target.value as DrillType }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm">
+            <select
+              value={editForm.drillType}
+              onChange={(e) =>
+                setEditForm((v) => {
+                  const drillType = e.target.value as DrillType;
+                  return {
+                    ...v,
+                    drillType,
+                    examTrack: v.examVisible ? (v.examTrack || defaultExamTrackByType(drillType)) : v.examTrack,
+                  };
+                })
+              }
+              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm"
+            >
               <option value="prompt_case">普通题（prompt_case）</option>
               <option value="code_case_multi">多文件题（code_case_multi）</option>
               <option value="build_sim_case">模拟构建题（build_sim_case）</option>
               <option value="template_case">教学样板题（template_case）</option>
             </select>
             <input type="datetime-local" value={editForm.publishedAt} onChange={(e) => setEditForm((v) => ({ ...v, publishedAt: e.target.value }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm" />
+            <select value={editForm.capabilityDomain} onChange={(e) => setEditForm((v) => ({ ...v, capabilityDomain: e.target.value as CapabilityDomain }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm">
+              <option value="coding">领域：coding</option>
+              <option value="docs">领域：docs</option>
+              <option value="tools">领域：tools</option>
+              <option value="life">领域：life</option>
+            </select>
+            <select
+              value={editForm.examTrack}
+              onChange={(e) => setEditForm((v) => ({ ...v, examTrack: e.target.value as ExamTrack | "" }))}
+              disabled={!editForm.examVisible}
+              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm disabled:opacity-60"
+            >
+              <option value="">考试赛道（默认按题型推断）</option>
+              <option value="debug">debug</option>
+              <option value="feature">feature</option>
+              <option value="from_zero">from_zero</option>
+            </select>
+            <input
+              type="number"
+              min={1}
+              value={editForm.examTimeLimitSec}
+              onChange={(e) => setEditForm((v) => ({ ...v, examTimeLimitSec: e.target.value }))}
+              placeholder="考试限时（秒，可选）"
+              disabled={!editForm.examVisible}
+              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm disabled:opacity-60"
+            />
+            <input
+              type="number"
+              min={1}
+              value={editForm.examSubmissionLimit}
+              onChange={(e) => setEditForm((v) => ({ ...v, examSubmissionLimit: e.target.value }))}
+              placeholder="考试提交次数上限（可选）"
+              disabled={!editForm.examVisible}
+              className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm disabled:opacity-60"
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={editForm.coachVisible}
+                onChange={(e) => setEditForm((v) => ({ ...v, coachVisible: e.target.checked }))}
+              />
+              Coach 可见
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={editForm.examVisible}
+                onChange={(e) =>
+                  setEditForm((v) => ({
+                    ...v,
+                    examVisible: e.target.checked,
+                    examTrack: e.target.checked ? (v.examTrack || defaultExamTrackByType(v.drillType)) : "",
+                  }))
+                }
+              />
+              Exam 可见
+            </label>
           </div>
           <textarea value={editForm.body} onChange={(e) => setEditForm((v) => ({ ...v, body: e.target.value }))} className="mt-2 min-h-36 w-full rounded-xl border border-border/70 bg-background px-3 py-2 text-sm" />
           <div className="mt-3 flex flex-wrap gap-2">
@@ -441,7 +689,7 @@ export default function AdminPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-semibold">题目附件管理</p>
             <select value={assetDrillId} onChange={(e) => setAssetDrillId(e.target.value)} className="h-10 w-full max-w-md rounded-xl border border-border/70 bg-background px-3 text-sm">
-              {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]}</option>)}
+              {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]} · {modeLabelText(d.mode_visibility)}</option>)}
             </select>
           </div>
           <div className="mt-3 grid gap-2">
@@ -470,6 +718,7 @@ export default function AdminPage() {
               <option value="file">文件（file）</option>
               <option value="log">日志（log）</option>
               <option value="spec">规格（spec）</option>
+              <option value="image">图片（image）</option>
             </select>
             <input type="number" min={1} value={assetForm.orderNo} onChange={(e) => setAssetForm((v) => ({ ...v, orderNo: Number(e.target.value) }))} className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm" />
             <input value={assetForm.path} onChange={(e) => setAssetForm((v) => ({ ...v, path: e.target.value }))} placeholder="附件路径，如 src/app.ts" className="h-10 rounded-xl border border-border/70 bg-background px-3 text-sm md:col-span-2" />
@@ -486,7 +735,7 @@ export default function AdminPage() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <p className="text-sm font-semibold">题目提交统计</p>
           <select value={selectedDrillId} onChange={(e) => setSelectedDrillId(e.target.value)} className="h-10 w-full max-w-md rounded-xl border border-border/70 bg-background px-3 text-sm">
-            {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]}</option>)}
+            {drills.map((d) => <option key={d.id} value={d.id}>{fmtCode(d.display_no)} · {d.title} · {typeLabel[d.drill_type]} · {modeLabelText(d.mode_visibility)}</option>)}
           </select>
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-4 text-sm">

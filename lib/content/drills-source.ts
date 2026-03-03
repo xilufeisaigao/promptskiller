@@ -5,6 +5,9 @@ import {
   DRILL_MODULES,
   getDrillById as getDrillByIdLocal,
   type Drill,
+  type DrillCapabilityDomain,
+  type DrillExamTrack,
+  type DrillMode,
   type DrillAsset,
   type DrillAssetKind,
   type DrillTemplateRound,
@@ -19,6 +22,11 @@ type DrillRow = {
   body_md: string;
   difficulty: number;
   drill_type: string | null;
+  mode_visibility: string[] | null;
+  capability_domain: string | null;
+  exam_track: string | null;
+  exam_time_limit_sec: number | null;
+  exam_submission_limit: number | null;
   tags: string[] | null;
   published_at: string | null;
 };
@@ -72,10 +80,39 @@ function normalizeDrillType(
   return "prompt_case";
 }
 
+function normalizeModeVisibility(value: string[] | null | undefined): DrillMode[] {
+  if (!Array.isArray(value) || value.length === 0) return ["coach"];
+  const out = new Set<DrillMode>();
+  for (const raw of value) {
+    if (raw === "coach" || raw === "exam") out.add(raw);
+  }
+  return out.size > 0 ? [...out] : ["coach"];
+}
+
+function normalizeCapabilityDomain(
+  value: string | null | undefined,
+): DrillCapabilityDomain {
+  if (value === "docs" || value === "tools" || value === "life") return value;
+  return "coding";
+}
+
+function normalizeExamTrack(
+  value: string | null | undefined,
+): DrillExamTrack | null {
+  if (value === "debug" || value === "feature" || value === "from_zero") return value;
+  return null;
+}
+
+function normalizeOptionalPositiveInt(value: number | null | undefined): number | null {
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  return Math.round(raw);
+}
+
 function normalizeAssetKind(
   value: string | null | undefined,
 ): DrillAssetKind | null {
-  if (value === "file" || value === "log" || value === "spec") return value;
+  if (value === "file" || value === "log" || value === "spec" || value === "image") return value;
   return null;
 }
 
@@ -103,6 +140,11 @@ function rowToDrill(row: DrillRow, fallbackDisplayNo: number): Drill {
     bodyMd: row.body_md,
     difficulty,
     drillType: normalizeDrillType(row.drill_type),
+    modeVisibility: normalizeModeVisibility(row.mode_visibility),
+    capabilityDomain: normalizeCapabilityDomain(row.capability_domain),
+    examTrack: normalizeExamTrack(row.exam_track),
+    examTimeLimitSec: normalizeOptionalPositiveInt(row.exam_time_limit_sec),
+    examSubmissionLimit: normalizeOptionalPositiveInt(row.exam_submission_limit),
     tags: row.tags ?? undefined,
     publishedAt: row.published_at,
   };
@@ -137,7 +179,7 @@ export async function listDrills(): Promise<Drill[]> {
     const supabase = createSupabasePublicClient();
     const { data, error } = await supabase
       .from("drills")
-      .select("id,display_no,title,body_md,difficulty,drill_type,tags,published_at")
+      .select("id,display_no,title,body_md,difficulty,drill_type,mode_visibility,capability_domain,exam_track,exam_time_limit_sec,exam_submission_limit,tags,published_at")
       .order("display_no", { ascending: true })
       .order("id", { ascending: true });
 
@@ -161,7 +203,7 @@ export async function listScheduledDrillsForUtcDate(
     const dateUtc = date.toISOString().slice(0, 10);
     const { data, error } = await supabase
       .from("drill_schedule")
-      .select("slot,drill:drills(id,display_no,title,body_md,difficulty,drill_type,tags,published_at)")
+      .select("slot,drill:drills(id,display_no,title,body_md,difficulty,drill_type,mode_visibility,capability_domain,exam_track,exam_time_limit_sec,exam_submission_limit,tags,published_at)")
       .eq("date", dateUtc)
       .order("slot", { ascending: true })
       .limit(count);
@@ -192,7 +234,7 @@ export async function getDrillById(id: string): Promise<Drill | undefined> {
     const supabase = createSupabasePublicClient();
     const { data, error } = await supabase
       .from("drills")
-      .select("id,display_no,title,body_md,difficulty,drill_type,tags,published_at")
+      .select("id,display_no,title,body_md,difficulty,drill_type,mode_visibility,capability_domain,exam_track,exam_time_limit_sec,exam_submission_limit,tags,published_at")
       .eq("id", id)
       .maybeSingle();
 
