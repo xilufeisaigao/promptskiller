@@ -13,6 +13,44 @@ type ProfileState =
 
 type AttemptRow = { score_total: number; created_at: string };
 type SubmissionRow = { id: string; votes_count: number; created_at: string };
+type AttemptHistoryDrill = {
+  id: string;
+  title: string;
+  display_no: number | null;
+  drill_type: string | null;
+};
+type AttemptHistoryRow = {
+  id: string;
+  drill_id: string;
+  prompt_text: string;
+  score_total: number;
+  coach_mode: string | null;
+  session_mode: string | null;
+  created_at: string;
+  drill: AttemptHistoryDrill | AttemptHistoryDrill[] | null;
+};
+type AttemptHistoryItem = {
+  id: string;
+  drillId: string;
+  drillTitle: string;
+  drillDisplayNo: number | null;
+  drillType: string | null;
+  promptText: string;
+  scoreTotal: number;
+  coachMode: string | null;
+  sessionMode: "coach" | "exam";
+  createdAt: string;
+};
+
+function toHistoryMode(raw: string | null): "coach" | "exam" {
+  return raw === "exam" ? "exam" : "coach";
+}
+
+function toPromptPreview(text: string, max = 200): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= max) return normalized;
+  return `${normalized.slice(0, max - 1)}...`;
+}
 
 export default function ProfilePage() {
   const [state, setState] = useState<ProfileState>({ kind: "loading" });
@@ -20,11 +58,34 @@ export default function ProfilePage() {
   const [attemptsCount, setAttemptsCount] = useState<number | null>(null);
   const [avgScore, setAvgScore] = useState<number | null>(null);
   const [streak, setStreak] = useState<number | null>(null);
+  const [historyAttempts, setHistoryAttempts] = useState<AttemptHistoryItem[]>([]);
+  const [historyMode, setHistoryMode] = useState<"all" | "coach" | "exam">("all");
+  const [historyKeyword, setHistoryKeyword] = useState("");
 
   const [submissions, setSubmissions] = useState<SubmissionRow[]>([]);
   const totalVotes = useMemo(
     () => submissions.reduce((sum, s) => sum + (s.votes_count || 0), 0),
     [submissions],
+  );
+  const filteredHistory = useMemo(() => {
+    const keyword = historyKeyword.trim().toLowerCase();
+    return historyAttempts.filter((item) => {
+      if (historyMode !== "all" && item.sessionMode !== historyMode) return false;
+      if (!keyword) return true;
+      return (
+        item.drillTitle.toLowerCase().includes(keyword) ||
+        item.drillId.toLowerCase().includes(keyword) ||
+        item.promptText.toLowerCase().includes(keyword)
+      );
+    });
+  }, [historyAttempts, historyKeyword, historyMode]);
+  const historyCounts = useMemo(
+    () => ({
+      all: historyAttempts.length,
+      coach: historyAttempts.filter((item) => item.sessionMode === "coach").length,
+      exam: historyAttempts.filter((item) => item.sessionMode === "exam").length,
+    }),
+    [historyAttempts],
   );
 
   useEffect(() => {
@@ -46,13 +107,15 @@ export default function ProfilePage() {
       // Attempts count (exact)
       const { count: c1, error: e1 } = await supabase
         .from("drill_attempts")
-        .select("id", { count: "exact", head: true });
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", user.id);
       if (active && !e1) setAttemptsCount(c1 ?? 0);
 
       // Recent attempts for avg/streak
       const { data: recent, error: e2 } = await supabase
         .from("drill_attempts")
         .select("score_total, created_at")
+        .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(200);
 
@@ -67,6 +130,37 @@ export default function ProfilePage() {
 
         setAvgScore(avg);
         setStreak(computeUtcStreak(rows.map((r) => r.created_at)));
+      }
+
+      // Drill attempt history
+      const { data: historyRows, error: e4 } = await supabase
+        .from("drill_attempts")
+        .select(
+          "id,drill_id,prompt_text,score_total,coach_mode,session_mode,created_at,drill:drills(id,title,display_no,drill_type)",
+        )
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(120);
+
+      if (!active) return;
+      if (!e4 && historyRows) {
+        const parsed = (historyRows as AttemptHistoryRow[]).map((row) => {
+          const drillObj = Array.isArray(row.drill) ? (row.drill[0] ?? null) : row.drill;
+          return {
+            id: row.id,
+            drillId: row.drill_id,
+            drillTitle: drillObj?.title ?? row.drill_id,
+            drillDisplayNo:
+              Number.isFinite(Number(drillObj?.display_no)) ? Number(drillObj?.display_no) : null,
+            drillType: drillObj?.drill_type ?? null,
+            promptText: toPromptPreview(row.prompt_text),
+            scoreTotal: Number.isFinite(Number(row.score_total)) ? Math.round(Number(row.score_total)) : 0,
+            coachMode: row.coach_mode,
+            sessionMode: toHistoryMode(row.session_mode),
+            createdAt: row.created_at,
+          } satisfies AttemptHistoryItem;
+        });
+        setHistoryAttempts(parsed);
       }
 
       // My submissions
@@ -159,6 +253,114 @@ export default function ProfilePage() {
       </section>
 
       <section className="rounded-3xl border border-border/60 bg-background p-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold tracking-tight">我的训练历史</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              共 {historyCounts.all} 条记录，支持按模式筛选和关键词搜索。
+            </p>
+          </div>
+          <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-background p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setHistoryMode("all")}
+              className={`rounded-full px-3 py-1 transition-colors ${
+                historyMode === "all" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              全部 {historyCounts.all}
+            </button>
+            <button
+              type="button"
+              onClick={() => setHistoryMode("coach")}
+              className={`rounded-full px-3 py-1 transition-colors ${
+                historyMode === "coach"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              教练 {historyCounts.coach}
+            </button>
+            <button
+              type="button"
+              onClick={() => setHistoryMode("exam")}
+              className={`rounded-full px-3 py-1 transition-colors ${
+                historyMode === "exam"
+                  ? "bg-foreground text-background"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              考试 {historyCounts.exam}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3">
+          <label className="sr-only" htmlFor="profile-history-search">
+            搜索训练历史
+          </label>
+          <input
+            id="profile-history-search"
+            value={historyKeyword}
+            onChange={(e) => setHistoryKeyword(e.target.value)}
+            placeholder="搜索题目名 / 题目ID / 提示词内容"
+            className="h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none ring-0 transition-shadow focus:border-foreground/40 focus:shadow-[0_0_0_2px_rgba(0,0,0,0.05)]"
+          />
+        </div>
+
+        {filteredHistory.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">暂无符合条件的训练记录。</p>
+        ) : (
+          <div className="mt-4 grid gap-3">
+            {filteredHistory.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-2xl border border-border/60 bg-background px-4 py-3"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">
+                      {item.drillDisplayNo ? `#${item.drillDisplayNo} · ` : ""}
+                      {item.drillTitle}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Date(item.createdAt).toLocaleString("zh-CN")} · {item.drillType ?? "unknown"} ·{" "}
+                      {item.coachMode ?? "mock"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                        item.sessionMode === "exam"
+                          ? "bg-foreground text-background"
+                          : "border border-border/70 bg-background text-muted-foreground"
+                      }`}
+                    >
+                      {item.sessionMode === "exam" ? "考试" : "教练"}
+                    </span>
+                    <span className="rounded-full border border-border/70 bg-background px-2.5 py-1 text-[11px] font-semibold tabular-nums">
+                      {item.scoreTotal}/120
+                    </span>
+                  </div>
+                </div>
+
+                <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{item.promptText}</p>
+
+                <div className="mt-3">
+                  <Link
+                    href={`/drills/${item.drillId}?mode=${item.sessionMode}`}
+                    className="inline-flex h-8 items-center justify-center rounded-full border border-border/70 bg-background px-3 text-xs text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    打开原题继续训练
+                  </Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-3xl border border-border/60 bg-background p-6">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold tracking-tight">我的周赛提交</h2>
@@ -201,4 +403,3 @@ export default function ProfilePage() {
     </div>
   );
 }
-

@@ -48,6 +48,7 @@ export async function POST(req: Request) {
     openaiModel,
   } =
     parsed.data;
+  const effectiveSessionMode = sessionMode === "exam" ? "exam" : "coach";
 
   const drill = await getDrillById(drillId);
   if (!drill) {
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  if (sessionMode === "exam" && !drill.modeVisibility.includes("exam")) {
+  if (effectiveSessionMode === "exam" && !drill.modeVisibility.includes("exam")) {
     return NextResponse.json(
       { ok: false, reason: "该题目未开放考试模式。" },
       { status: 400 },
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
   const trimmedKey = (openaiApiKey || "").trim();
   const shouldUseOpenAI = Boolean(trimmedKey);
   const shouldReturnCodeOutput =
-    drill.drillType === "build_sim_case" || sessionMode === "exam";
+    drill.drillType === "build_sim_case" || effectiveSessionMode === "exam";
   const roundNo = (attemptIndex ?? 0) + 1;
 
   let mode: CoachMode = "mock";
@@ -86,6 +87,7 @@ export async function POST(req: Request) {
         model: openaiModel,
         drill,
         promptText,
+        sessionMode: effectiveSessionMode,
       });
 
       let roundOutput = null;
@@ -98,11 +100,13 @@ export async function POST(req: Request) {
             model: openaiModel,
             drill,
             promptText,
+            sessionMode: effectiveSessionMode,
           });
           roundOutput = coerceBuildSimRoundOutput(generated);
         } catch {
           roundOutput = buildMockBuildSimRoundOutput({
-            drillTitle: drill.title,
+            drillTitle:
+              effectiveSessionMode === "exam" ? null : drill.title,
             promptText,
             roundNo,
             feedback,
@@ -114,10 +118,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, result });
     }
 
-    const feedback = mockCoachFeedback({ drill, promptText });
+    const feedback = mockCoachFeedback({
+      drill,
+      promptText,
+      sessionMode: effectiveSessionMode,
+    });
     const roundOutput = shouldReturnCodeOutput
       ? buildMockBuildSimRoundOutput({
-          drillTitle: drill.title,
+          drillTitle: effectiveSessionMode === "exam" ? null : drill.title,
           promptText,
           roundNo,
           feedback,

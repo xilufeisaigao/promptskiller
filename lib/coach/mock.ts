@@ -37,6 +37,7 @@ function findAmbiguousPhrases(text: string): string[] {
 export function mockCoachFeedback(input: {
   drill: Drill;
   promptText: string;
+  sessionMode?: "coach" | "exam";
 }): CoachFeedback {
   const prompt = input.promptText.trim();
   const promptLower = prompt.toLowerCase();
@@ -139,7 +140,9 @@ export function mockCoachFeedback(input: {
     "你是一名严谨的 AI 教练，请先提出澄清问题，再给出方案。",
     "",
     "背景：",
-    `- 训练题：${input.drill.title}`,
+    input.sessionMode === "exam"
+      ? "- 我会在消息中提供必要的代码片段/日志/目标，不要假设未提供信息。"
+      : `- 训练题：${input.drill.title}`,
     "- 我正在尝试写一个高质量提示词。",
     "",
     "我的目标：",

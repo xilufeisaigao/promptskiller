@@ -33,5 +33,18 @@ describe("mockCoachFeedback", () => {
     expect(feedback.ambiguities.join("\n")).toContain("尽量");
     expect(feedback.score_total).toBeLessThan(60);
   });
-});
 
+  it("does not leak drill title into rewrite example for exam mode", () => {
+    const drill = getDrillById("drill-debug-minimal-repro");
+    expect(drill).toBeTruthy();
+
+    const feedback = mockCoachFeedback({
+      drill: drill!,
+      promptText: "请先问我需要补充哪些日志，再给出修复计划。",
+      sessionMode: "exam",
+    });
+
+    expect(feedback.rewrite_example ?? "").not.toContain(drill!.title);
+    expect(feedback.rewrite_example ?? "").toContain("不要假设未提供信息");
+  });
+});

@@ -31,12 +31,13 @@ function firstLine(text: string, max = 90): string {
 }
 
 export function buildMockBuildSimRoundOutput(input: {
-  drillTitle: string;
+  drillTitle?: string | null;
   promptText: string;
   roundNo: number;
   feedback: CoachFeedback;
 }): BuildSimRoundOutput {
-  const seed = simpleHash(`${input.drillTitle}\n${input.promptText}\n${input.roundNo}`);
+  const drillTitle = input.drillTitle?.trim() || "当前任务";
+  const seed = simpleHash(`${drillTitle}\n${input.promptText}\n${input.roundNo}`);
 
   const candidates = [
     "apps/web/src/modules/alerts/page.tsx",
@@ -64,7 +65,7 @@ export function buildMockBuildSimRoundOutput(input: {
   }));
 
   const summary = [
-    `第 ${input.roundNo} 轮模拟构建：围绕「${input.drillTitle}」生成了最小可执行改动方案。`,
+    `第 ${input.roundNo} 轮模拟构建：围绕「${drillTitle}」生成了最小可执行改动方案。`,
     `本轮提示词重点：${firstLine(input.promptText)}。`,
     "输出强调增量改动与可回滚发布，不引入新基础设施。",
   ].join(" ");

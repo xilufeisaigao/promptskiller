@@ -205,6 +205,77 @@ function reasonFromStatus(status?: number): string | null {
   return null;
 }
 
+type SessionMode = "coach" | "exam";
+
+function isExamSession(sessionMode?: SessionMode): boolean {
+  return sessionMode === "exam";
+}
+
+export function buildCoachFeedbackUserInput(input: {
+  drill: Drill;
+  promptText: string;
+  sessionMode?: SessionMode;
+}): string {
+  const lines: string[] = [];
+  if (isExamSession(input.sessionMode)) {
+    lines.push(
+      "【考试模式上下文策略】",
+      "仅使用用户本轮显式输入的信息，不要自行补充题干、附件代码或日志内容。",
+      "",
+    );
+  } else {
+    lines.push(
+      "【训练题】",
+      `标题：${input.drill.title}`,
+      "正文：",
+      input.drill.bodyMd,
+      "",
+    );
+  }
+
+  lines.push(
+    "【用户提示词】",
+    input.promptText,
+    "",
+    "请按 schema 输出反馈 JSON。",
+    "如果你无法严格按 schema，请至少返回单个 JSON 对象，不要包裹 Markdown 代码块。",
+  );
+  return lines.join("\n");
+}
+
+export function buildBuildSimRoundUserInput(input: {
+  drill: Drill;
+  promptText: string;
+  sessionMode?: SessionMode;
+}): string {
+  const lines: string[] = [];
+  if (isExamSession(input.sessionMode)) {
+    lines.push(
+      "【考试模式上下文策略】",
+      "只根据用户本轮显式输入生成结果，不要补充题干、附件或隐藏要求。",
+      "",
+    );
+  } else {
+    lines.push(
+      "【训练题】",
+      `标题：${input.drill.title}`,
+      `类型：${input.drill.drillType}`,
+      "正文：",
+      input.drill.bodyMd,
+      "",
+    );
+  }
+
+  lines.push(
+    "【用户本轮提示词】",
+    input.promptText,
+    "",
+    "请输出本轮模拟构建结果 JSON。",
+  );
+
+  return lines.join("\n");
+}
+
 export async function testOpenAIKeyConnectivity(input: {
   apiKey: string;
   provider?: string;
@@ -248,6 +319,7 @@ export async function createCoachFeedbackWithOpenAI(input: {
   model?: string;
   drill: Drill;
   promptText: string;
+  sessionMode?: SessionMode;
 }): Promise<CoachFeedback> {
   const apiKey = input.apiKey.trim();
   if (!apiKey) throw new Error("Missing OpenAI API key");
@@ -267,18 +339,11 @@ export async function createCoachFeedbackWithOpenAI(input: {
     "- 分数含义：每个维度 0-20，维度包含 context/constraints/output_format/acceptance_criteria/tests_and_edge_cases/process_control，总分 0-120。",
   ].join("\n");
 
-  const user = [
-    "【训练题】",
-    `标题：${input.drill.title}`,
-    "正文：",
-    input.drill.bodyMd,
-    "",
-    "【用户提示词】",
-    input.promptText,
-    "",
-    "请按 schema 输出反馈 JSON。",
-    "如果你无法严格按 schema，请至少返回单个 JSON 对象，不要包裹 Markdown 代码块。",
-  ].join("\n");
+  const user = buildCoachFeedbackUserInput({
+    drill: input.drill,
+    promptText: input.promptText,
+    sessionMode: input.sessionMode,
+  });
 
   let outputText = "";
 
@@ -347,6 +412,7 @@ export async function createBuildSimRoundOutputWithOpenAI(input: {
   model?: string;
   drill: Drill;
   promptText: string;
+  sessionMode?: SessionMode;
 }): Promise<BuildSimRoundOutput> {
   const apiKey = input.apiKey.trim();
   if (!apiKey) throw new Error("Missing OpenAI API key");
@@ -363,18 +429,11 @@ export async function createBuildSimRoundOutputWithOpenAI(input: {
     "risk_notes 输出可验证风险，不要空泛措辞。",
   ].join("\n");
 
-  const user = [
-    "【训练题】",
-    `标题：${input.drill.title}`,
-    `类型：${input.drill.drillType}`,
-    "正文：",
-    input.drill.bodyMd,
-    "",
-    "【用户本轮提示词】",
-    input.promptText,
-    "",
-    "请输出本轮模拟构建结果 JSON。",
-  ].join("\n");
+  const user = buildBuildSimRoundUserInput({
+    drill: input.drill,
+    promptText: input.promptText,
+    sessionMode: input.sessionMode,
+  });
 
   let outputText = "";
 

@@ -13,6 +13,38 @@ function ScorePill(props: { label: string; value: number }) {
   );
 }
 
+function buildFallbackRewriteExample(coach: CoachResult["feedback"]): string {
+  const missing = coach.missing_items.slice(0, 3);
+  const questions = coach.suggested_questions_to_answer.slice(0, 3);
+  const ambiguityHint = coach.ambiguities.slice(0, 2);
+
+  const outputLines = [
+    "你是我的开发助理，请先澄清，再执行。",
+    "",
+    "目标：",
+    "- 先确认我当前目标、输入、限制和验收标准。",
+    "- 再给出最小可执行方案与验证步骤。",
+    "",
+    "我已知信息：",
+    ...missing.map((item) => `- ${item}`),
+    ...(missing.length === 0 ? ["- 我会补充当前状态、环境与边界条件。"] : []),
+    "",
+    "你需要先问我这些澄清问题：",
+    ...questions.map((q) => `- ${q}`),
+    ...(questions.length === 0 ? ["- 当前信息是否足够开始执行？"] : []),
+    "",
+    ambiguityHint.length > 0 ? "避免模糊表述：" : "",
+    ...ambiguityHint.map((x) => `- ${x}`),
+    "",
+    "输出格式要求：",
+    "- 第一部分：澄清问题（编号列表）",
+    "- 第二部分：执行计划（分步）",
+    "- 第三部分：验收标准与测试清单",
+  ].filter(Boolean);
+
+  return outputLines.join("\n");
+}
+
 export function CoachFeedbackView(props: { coach: CoachResult }) {
   const f = props.coach.feedback;
   const [missingVisible, setMissingVisible] = useState(0);
@@ -21,7 +53,11 @@ export function CoachFeedbackView(props: { coach: CoachResult }) {
   const [showRewrite, setShowRewrite] = useState(false);
   const [typedChars, setTypedChars] = useState(0);
 
-  const rewriteText = useMemo(() => f.rewrite_example ?? "", [f.rewrite_example]);
+  const hasModelRewrite = Boolean((f.rewrite_example ?? "").trim());
+  const rewriteText = useMemo(
+    () => (hasModelRewrite ? String(f.rewrite_example).trim() : buildFallbackRewriteExample(f)),
+    [f, hasModelRewrite],
+  );
 
   useEffect(() => {
     const timers: Array<ReturnType<typeof setTimeout>> = [];
@@ -147,17 +183,22 @@ export function CoachFeedbackView(props: { coach: CoachResult }) {
                 return next;
               })
             }
-            className="inline-flex h-8 items-center justify-center rounded-full border border-border/70 bg-background px-3 text-xs font-medium text-foreground hover:bg-muted/30"
+            className="inline-flex h-8 items-center justify-center rounded-full bg-foreground px-3 text-xs font-medium text-background shadow-sm transition-opacity hover:opacity-90"
           >
             {showRewrite ? "隐藏参考答案" : "显示参考答案"}
           </button>
         </div>
+        {!hasModelRewrite ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            当前题目未返回模型参考答案，已提供自动模板供你快速迭代。
+          </p>
+        ) : null}
 
         {!showRewrite ? (
           <p className="mt-2 text-sm text-muted-foreground">
             先根据上面的反馈自己改一版，再点按钮查看参考答案效果会更好。
           </p>
-        ) : f.rewrite_example ? (
+        ) : rewriteText ? (
           <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-border/60 bg-muted/40 p-3 text-xs leading-5">
             {rewriteText.slice(0, typedChars) || rewriteText}
           </pre>
